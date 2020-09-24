@@ -28,7 +28,7 @@ increment_new_data=100
 datafolder='data2/'
 resume=False
 resume_after_adding_pseudo_of_step=16
-load_precomputed_features=False
+load_precomputed_features=True
 load_labeled_dataset=False
 unlabeled_dataset="volbrain"
 #unlabeled_dataset="isbi_test"
@@ -149,8 +149,8 @@ if(resume):
         unlabeled_num=len(unlabeled_indxs)
     step=resume_after_adding_pseudo_of_step-1
     model.load_weights(out_filepath(step))
-else:
-    labeld_to_data(x_train,y_train,datafolder=datafolder)
+
+#labeld_to_data(x_train,y_train,datafolder=datafolder)
 
 #Training
 while(unlabeled_num>increment_new_data):
