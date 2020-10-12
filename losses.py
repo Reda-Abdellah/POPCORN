@@ -23,18 +23,21 @@ def BottleneckRegularized(y_true, y_pred):
    return keras.losses.mean_squared_error(y_pred[0],y_pred[1])
 """
 def BottleneckRegularized(y_true, y_pred):
-    inter_dice=y_true[0]
+    #inter_dice=y_true[0]
     #latent_distance=keras.losses.mean_squared_error(y_pred[0],y_pred[1])
     latent_distance= 2*K.sum(K.square(y_pred[0]-y_pred[1]))/(K.mean(K.square(y_pred[0]))+K.mean(K.square(y_pred[1])))
-    do=0.2
-    h=1.0
-    loss1= latent_distance*inter_dice - tf.math.minimum(0.0, (latent_distance-h)* (1-inter_dice))
+    #do=0.2
+    #h=1.0
+    #loss1= latent_distance*inter_dice - tf.math.minimum(0.0, (latent_distance-h)* (1-inter_dice))
     #loss2= tf.math.maximum(0.0, (latent_distance-h)* ( inter_dice-do)  )
     #latent_distance= 2*K.sum(K.square(y_pred[0]-y_pred[1]))/(K.mean(K.square(y_pred[0]))+K.mean(K.square(y_pred[1])))
     #segmentation_distance= 2*K.sum(K.square(y_true[0]-y_true[1]))/(K.sum(y_true[0])+K.sum(y_true[1]))
-    #segmentation_distance=y_true[0]
-    #loss3= latent_distance* K.exp(-segmentation_distance)
-    return loss1
+    segmentation_distance=y_true[0]
+    loss3= latent_distance* K.exp(-segmentation_distance)
+    #input_distance=y_true[0]
+    #loss4= latent_distance* K.exp(-input_distance)
+    return loss3
+
 
 def newGDL(y_true, y_pred):
     acu=0

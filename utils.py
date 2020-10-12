@@ -234,6 +234,17 @@ def give_dist_for_Kclosest(ranks,n_indxs=100,k=50):
     ranks[indxs,:]=9999999
     return indxs.tolist()
 
+def give_dist_for_Kfarest(ranks,n_indxs=100,k=50):
+    indxs=[]
+    argpartition=np.argpartition(ranks, ranks.shape[1]-k, axis=1)[:,ranks.shape[1]-k:]
+    Kfarest=np.zeros(ranks.shape)
+    for i in range(ranks.shape[0]):
+        Kfarest[i,argpartition[i,:]]=1
+    values_for_distance= Kfarest*ranks
+    distance= np.sum(values_for_distance,axis=1)
+    indxs=np.argpartition(distance, distance.shape[0]-n_indxs)[distance.shape[0]-n_indxs:]
+    ranks[indxs,:]=0
+    return indxs.tolist()
 
 def give_n_farest(ranks,n_indxs=100):
     indxs=[]
@@ -329,14 +340,15 @@ def load_isbi(one_out):
     return x_train,y_train,x_val,y_val
 
 
-def data_gen_iqda_2it(datafolder='data/',same_ratio=0.33,sim='DICE'):
+
+def data_gen_iqda_2it(datafolder,train_files_bytiles,same_ratio=0.33,sim='DICE'):
     while(1):
         list_x=sorted(glob.glob(datafolder+"x*.npy"))
         list_y=sorted(glob.glob(datafolder+"y*.npy"))
         random_idxs1= np.arange(len(list_x))
-        random_idxs2= np.arange(len(list_x))
+        #random_idxs2= np.arange(len(list_x))
         np.random.shuffle(random_idxs1)
-        np.random.shuffle(random_idxs2)
+        #np.random.shuffle(random_idxs2)
         for i in range(len(list_x)):
             op=np.random.choice(2,1,p=[same_ratio,1-same_ratio]) # 0 same 1 different
             if(op==0):
@@ -346,32 +358,41 @@ def data_gen_iqda_2it(datafolder='data/',same_ratio=0.33,sim='DICE'):
                 y_2=np.load(list_y[random_idxs1[i]])
                 if(sim=='DICE'):
                     inter_sim=1.0
+                if(sim=='DICE_norm'):
+                    inter_sim=(1.0-0.15)*4
                 elif(sim=='input_diff'):
                     inter_sim=0.0
                 else:
                     inter_sim=0.0
             else:
-                x_1=np.load(list_x[random_idxs1[i]])
+                x1_name= list_x[random_idxs1[i]]
+                tile_num= int(x1_name.split('tile_')[-1].split('.npy')[0])
+                x2_name= random.choice(train_files_bytiles[tile_num])
+                y2_name= x2_name.replace('x', 'y')
+                x_1=np.load(x1_name)
                 y_1=np.load(list_y[random_idxs1[i]])
-                x_2=np.load(list_x[random_idxs2[i]])
-                y_2=np.load(list_y[random_idxs2[i]])
+                x_2=np.load(x2_name)
+                y_2=np.load(y2_name)
                 #print(y_2.shape)
                 if(sim=='DICE'):
                     tp=np.sum(y_2[:,:,:,:,1]*y_1[:,:,:,:,1])
                     fp=np.sum(y_2[:,:,:,:,1]*y_1[:,:,:,:,0])
                     fn=np.sum(y_2[:,:,:,:,0]*y_1[:,:,:,:,1])
-                    inter_sim= 2*tp/(2*tp+fp+fn)
+                    inter_sim= 2*tp/(2*tp+fp+fn+1)
+
+                if(sim=='DICE_norm'):
+                    tp=np.sum(y_2[:,:,:,:,1]*y_1[:,:,:,:,1])
+                    fp=np.sum(y_2[:,:,:,:,1]*y_1[:,:,:,:,0])
+                    fn=np.sum(y_2[:,:,:,:,0]*y_1[:,:,:,:,1])
+                    inter_sim= 2*tp/(2*tp+fp+fn+1)
+                    inter_sim=(inter_sim-0.15)*4 #normalize
                 elif(sim=='input_diff'):
                     inter_sim_1= np.sum(np.square(x_2[:,:,:,:,0]-x_1[:,:,:,:,0]))/(np.sum(x_2[:,:,:,:,0])+np.sum(x_1[:,:,:,:,0]))
                     inter_sim_2=np.sum(np.square(x_2[:,:,:,:,1]-x_1[:,:,:,:,1]))/(np.sum(x_2[:,:,:,:,1])+np.sum(x_1[:,:,:,:,1]))
                     inter_sim=inter_sim_1+inter_sim_2
                 else:
-                    inter_sim= 2*np.sum(np.square(y_2[:,:,:,:,1]-y_1[:,:,:,:,1]))/(np.sum(y_2[:,:,:,:,1])+np.sum(y_1[:,:,:,:,1])+1)
-                    #print("start")
-                    #print(inter_sim)
-                    #print("end")
-                    #inter_sim=np.cast( inter_sim , dtype=tf.float32)
-                    #print(inter_sim)
+                    #inter_sim= 2*np.sum(np.square(y_2[:,:,:,:,1]-y_1[:,:,:,:,1]))/(np.sum(y_2[:,:,:,:,1])+np.sum(y_1[:,:,:,:,1])+1)
+                    inter_sim= np.sum(np.square(y_2[:,:,:,:,1]-y_1[:,:,:,:,1]))/ 350
 
             x_1=IQDA(x_1)
             x_2=IQDA(x_2)
@@ -537,7 +558,7 @@ def data_gen_mixup(datafolder='data/'):
             x_=x_train_[:,:,:,:,0:2]
             yield x_,y_
 
-def update_data_folder(model,new_pseudo,listaT1,listaFLAIR,listaMASK=None,datafolder='data/',regularized=False):
+def update_data_folder(model,new_pseudo,listaT1,listaFLAIR,listaMASK=None,datafolder='data/',numbernotnullpatch=5,regularized=False):
     numb_data= len(sorted(glob.glob(datafolder+"x*.npy")))
     for i in range(len(new_pseudo)):
         print(listaT1[new_pseudo[i]])
@@ -546,15 +567,14 @@ def update_data_folder(model,new_pseudo,listaT1,listaFLAIR,listaMASK=None,datafo
         except:
             T1,FLAIR=load_modalities(listaT1[new_pseudo[i]],listaFLAIR[new_pseudo[i]])
 
-        seg = seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[96,96,96],regularized=regularized)
-        #seg = seg_majvote(T1,FLAIR,model,nbNN=[3,3,3],ps=[96,96,96])
+        #seg = seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[96,96,96])
+        seg = seg_majvote(T1,FLAIR,model,nbNN=[3,3,3],ps=[96,96,96],regularized=regularized)
         #x_in, y_in = random_patches_andLAB(T1,FLAIR,seg,number=5)
-        x_in, y_in = notNull_patches_andLAB(T1,FLAIR,seg,number=5)
+        x_in, y_in , out_indx= notNull_patches_andLAB(T1,FLAIR,seg,number=numbernotnullpatch)
         for j in range(x_in.shape[0]):
-            np.save(datafolder+'x_'+str(numb_data+j+i*5)+'.npy',x_in[j:j+1])
-            np.save(datafolder+'y_'+str(numb_data+j+i*5)+'.npy',y_in[j:j+1])
+            np.save(datafolder+'x_'+str(numb_data+j+i*numbernotnullpatch)+"_tile_"+str(out_indx[j])+'.npy',x_in[j:j+1])
+            np.save(datafolder+'y_'+str(numb_data+j+i*numbernotnullpatch)+"_tile_"+str(out_indx[j])+'.npy',y_in[j:j+1])
     return True
-
 
 def load_seg(path):
     seg_img = nii.load(path)
@@ -635,9 +655,10 @@ def random_patches_andLAB(T1,FLAIR,LAB,nbNN=[3,3,3],number=10):
     return x_in[random_idxs[:number]], y_in[random_idxs[:number]]
 
 def notNull_patches_andLAB(T1,FLAIR,LAB,nbNN=[3,3,3],number=10):
-    x_in= patches(T1,FLAIR,nbNN=[3,3,3])
-    y_in= patches(1-LAB,LAB,nbNN=[3,3,3]).astype('int')
+    x_in= patches(T1,FLAIR,nbNN=nbNN)
+    y_in= patches(1-LAB,LAB,nbNN=nbNN).astype('int')
     sum_y_in=y_in[:,:,:,:,1].sum(axis=(1,2,3))
+    #print(x_in.shape[0])
     random_idxs= np.arange(x_in.shape[0])
     np.random.shuffle(random_idxs)
     num=0
@@ -651,11 +672,13 @@ def notNull_patches_andLAB(T1,FLAIR,LAB,nbNN=[3,3,3],number=10):
             if(num==0):
                 x=x_in[i:i+1]
                 y=y_in[i:i+1]
+                indx_out= np.array([random_idxs[i]])
             else:
                 x=np.concatenate((x,x_in[i:i+1]),axis=0)
                 y=np.concatenate((y,y_in[i:i+1]),axis=0)
+                indx_out= np.concatenate((indx_out,np.array([random_idxs[i]])))
             num=num+1
-    return x, y
+    return x, y, indx_out
 
 def seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[96,96,96],regularized=False):
     MASK = (1-(T1==0).astype('int'))

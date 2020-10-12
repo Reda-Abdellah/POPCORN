@@ -21,13 +21,13 @@ from keras import backend as K
 
 os.environ["CUDA_VISIBLE_DEVICES"]='0'
 Rootpath=os.getcwd()
-nbNN=[5,5,5]
+#nbNN=[5,5,5]
 ps=[96,96,96]
 Epoch_per_step=2
 increment_new_data=100
 datafolder='data2/'
 resume=False
-resume_after_adding_pseudo_of_step=16
+resume_after_adding_pseudo_of_step=14
 load_precomputed_features=True
 load_labeled_dataset=False
 unlabeled_dataset="volbrain"
@@ -38,7 +38,7 @@ regularized_loss='loss3'
 loss_weights=[1,100]
 #filepath="One_Tile_96_2mods.h5"
 #filepath="One_2mods_96_MSO_andISBI_gen_IQDA.h5"
-in_filepath="One_2mods_2it033same_loss1[1_02]_96_MSO_andISBI_gen_IQDA.h5"
+in_filepath="One_2mods_2it02same_loss3__1_1_96_ISBI_gen_IQDA.h5"
 out_filepath= lambda x: 'weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_'+regularized_loss+'__'+str(loss_weights[0])+'_'+str(loss_weights[1])+'__Kclosest_'+str(x)+'.h5'
 #out_filepath= lambda x: 'weights/data_gen_iqda_volbrain_TSNE3_Kclosest_'+str(x)+'.h5'
 
@@ -57,13 +57,13 @@ else:
     fun = get_bottleneck_features_func(model)
 
 if(unlabeled_dataset=="volbrain"):
-    listaT1 = sorted(glob.glob("../lib/volbrain_qc/n_mfmni*t1*.nii*"))
-    listaFLAIR = sorted(glob.glob("../lib/volbrain_qc/n_mfmni*flair*.nii*"))
-    listaMASK = sorted(glob.glob("../lib/volbrain_qc/mask*.nii*"))
+    listaT1 = sorted(glob.glob("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib/volbrain_qc/n_mfmni*t1*.nii*"))
+    listaFLAIR = sorted(glob.glob("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib/volbrain_qc/n_mfmni*flair*.nii*"))
+    listaMASK = sorted(glob.glob("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib/volbrain_qc/mask*.nii*"))
     listaMASK = np.array(listaMASK)
 elif(unlabeled_dataset=="isbi_test"):
-    listaT1 = sorted(glob.glob("../lib/ISBI_preprocess/test*mprage*.nii*"))
-    listaFLAIR = sorted(glob.glob("../lib/ISBI_preprocess/test*flair*.nii*"))
+    listaT1 = sorted(glob.glob("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib/ISBI_preprocess/test*mprage*.nii*"))
+    listaFLAIR = sorted(glob.glob("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib/ISBI_preprocess/test*flair*.nii*"))
 
 #listaT1 =listaT1[:5]
 #listaFLAIR =listaFLAIR[:5]
@@ -72,9 +72,9 @@ listaT1=np.array(listaT1)
 listaFLAIR=np.array(listaFLAIR)
 
 #indexing labeled data
-lib_path_1 = os.path.join("..","lib","MS_O")
-lib_path_2 = os.path.join("..","lib","msseg")
-lib_path_3 = os.path.join("..","lib","isbi_final_train_preprocessed")
+lib_path_1 = os.path.join("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain","lib","MS_O")
+lib_path_2 = os.path.join("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain","lib","msseg")
+lib_path_3 = os.path.join("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain","lib","isbi_final_train_preprocessed")
 #lib_path = os.path.join("lib","MS_XX_P")
 
 listaT1_1=keyword_toList(path=lib_path_1,keyword="t1")
@@ -106,10 +106,10 @@ if(load_labeled_dataset):
         x_train,y_train,x_val,y_val=load_isbi(one_out=False)
     else:
         #add data to datafolder
-        update_labeled_folder(listaT1_1,listaFLAIR_1,listaMASK_1,listaMASK=None,datafolder=datafolder,numbernotnullpatch=10)
+        #update_labeled_folder(listaT1_1,listaFLAIR_1,listaMASK_1,listaMASK=None,datafolder=datafolder,numbernotnullpatch=10)
         #update_labeled_folder(listaT1_2,listaFLAIR_2,listaSEG_2,listaMASK=None,datafolder=datafolder_val,numbernotnullpatch=10)
-        update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG1_3,listaMASK=None,datafolder=datafolder,numbernotnullpatch=10)
-        update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,numbernotnullpatch=10)
+        update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG1_3,listaMASK=None,datafolder=datafolder,numbernotnullpatch=27)
+        update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,numbernotnullpatch=27)
 
 
 
@@ -157,7 +157,9 @@ while(unlabeled_num>increment_new_data):
     step=step+1
     print('step: '+str(step))
     print('loading new data...')
-    if(not step==resume_after_adding_pseudo_of_step):
+    if( resume and step==resume_after_adding_pseudo_of_step):
+        print('resuming..')
+    else:
         #new_pos_in_features = give_n_closest(rank_distance,n_indxs=increment_new_data)
         new_pos_in_features = give_dist_for_Kclosest(rank_distance,n_indxs=increment_new_data,k=5)
         print(new_pos_in_features)
@@ -172,9 +174,12 @@ while(unlabeled_num>increment_new_data):
         #pseudolabeled_num=len(pseudolabeled_indxs)
 
         #x_train,y_train=update_with_new_pseudo(model,x_train,y_train,new_pseudo,listaT1,listaFLAIR,listaMASK)
-
         #update_data_folder(model,new_pos_in_features,listaT1,listaFLAIR,listaMASK,datafolder=datafolder)
         update_data_folder(model,new_pos_in_features,listaT1,listaFLAIR,listaMASK,datafolder=datafolder,regularized=True)
+        train_files_bytiles=[]
+        for i in range(27):
+        	train_files_bytiles.append(keyword_toList(datafolder,"tile_"+str(i)) )
+
 
     print('training with new data...')
     if(train_by_loading_alldata_to_RAM):
@@ -186,11 +191,11 @@ while(unlabeled_num>increment_new_data):
     else:
         numb_data= len(sorted(glob.glob(datafolder+"x*.npy")))
         if(regularized):
-            result=model.fit_generator(data_gen_iqda_2it(datafolder=datafolder,sim='output_diff'), #loss1->sim='DICE' loss3->sim='output_diff' loss4->sim='input_diff'
+            result=model.fit_generator(data_gen_iqda_2it(datafolder,train_files_bytiles,sim='output_diff'), #loss1->sim='DICE' loss3->sim='output_diff' loss4->sim='input_diff'
                 steps_per_epoch=numb_data,
                 epochs=Epoch_per_step)
         else:
-            result=model.fit_generator(data_gen_iqda(datafolder=datafolder),#data_gen(), data_gen_iqda
+            result=model.fit_generator(data_gen_iqda(datafolder),#data_gen(), data_gen_iqda
                 steps_per_epoch=numb_data,
                 epochs=Epoch_per_step)
 
