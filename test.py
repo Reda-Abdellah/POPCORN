@@ -4,7 +4,7 @@ import nibabel as nii
 from keras import optimizers
 import numpy as np
 
-os.environ["CUDA_VISIBLE_DEVICES"]='2'
+os.environ["CUDA_VISIBLE_DEVICES"]='0'
 img_path='../lib/msseg/'
 #WEIGHTS=''
 #pred_path=''
@@ -20,7 +20,7 @@ else:
 
 #listaWeights = sorted(glob.glob("One_Tile_96_2mods*.h5"))
 random_weights = sorted(glob.glob("weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_loss3__1_100__random*.h5"))
-nearest_weights= sorted(glob.glob("weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_loss3__1_100__Kclosest*.h5"))
+nearest_weights= sorted(glob.glob("weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_loss3__1_100__Kclosest/*.h5"))
 
 def seg_to_folder_with_Weightlist(listaWeights,model,listaT1,listaFLAIR):
     for WEIGHTS in listaWeights:
@@ -55,5 +55,5 @@ def seg_to_folder(pred_path,model,WEIGHTS,listaT1,listaFLAIR):
         img = nii.Nifti1Image(SEG_mask.astype(np.uint8), T1_img.affine )
         img.to_filename(name)
 
-seg_to_folder_with_Weightlist(random_weights,model,listaT1,listaFLAIR)
+#seg_to_folder_with_Weightlist(random_weights,model,listaT1,listaFLAIR)
 seg_to_folder_with_Weightlist(nearest_weights,model,listaT1,listaFLAIR)

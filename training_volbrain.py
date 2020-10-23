@@ -26,8 +26,8 @@ ps=[96,96,96]
 Epoch_per_step=2
 increment_new_data=100
 datafolder='data2/'
-resume=False
-resume_after_adding_pseudo_of_step=14
+resume=True
+resume_after_adding_pseudo_of_step=20
 load_precomputed_features=True
 load_labeled_dataset=False
 unlabeled_dataset="volbrain"
@@ -39,7 +39,7 @@ loss_weights=[1,100]
 #filepath="One_Tile_96_2mods.h5"
 #filepath="One_2mods_96_MSO_andISBI_gen_IQDA.h5"
 in_filepath="One_2mods_2it02same_loss3__1_1_96_ISBI_gen_IQDA.h5"
-out_filepath= lambda x: 'weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_'+regularized_loss+'__'+str(loss_weights[0])+'_'+str(loss_weights[1])+'__Kclosest_'+str(x)+'.h5'
+out_filepath= lambda x: 'weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_'+regularized_loss+'__'+str(loss_weights[0])+'_'+str(loss_weights[1])+'__Kclosest_'+"%02d" % (x)+'.h5'
 #out_filepath= lambda x: 'weights/data_gen_iqda_volbrain_TSNE3_Kclosest_'+str(x)+'.h5'
 
 
@@ -176,9 +176,9 @@ while(unlabeled_num>increment_new_data):
         #x_train,y_train=update_with_new_pseudo(model,x_train,y_train,new_pseudo,listaT1,listaFLAIR,listaMASK)
         #update_data_folder(model,new_pos_in_features,listaT1,listaFLAIR,listaMASK,datafolder=datafolder)
         update_data_folder(model,new_pos_in_features,listaT1,listaFLAIR,listaMASK,datafolder=datafolder,regularized=True)
-        train_files_bytiles=[]
-        for i in range(27):
-        	train_files_bytiles.append(keyword_toList(datafolder,"tile_"+str(i)) )
+    train_files_bytiles=[]
+    for i in range(27):
+    	train_files_bytiles.append(keyword_toList(datafolder,"tile_"+str(i)) )
 
 
     print('training with new data...')

@@ -1,11 +1,7 @@
-import umap
 from sklearn.datasets import load_digits
-import os
-import glob
+import os, glob, random, math, operator, umap
 import numpy as np
 import nibabel as nii
-import math
-import operator
 #import patch_extraction
 from scipy.ndimage.interpolation import zoom
 from keras.models import load_model
@@ -26,6 +22,7 @@ import matplotlib.pyplot as plt
 import patch_extraction
 from sklearn.decomposition import PCA
 import data_augmentation
+
 
 def get_bottleneck_features_func(model):
     input1 = model.input               # input placeholder
@@ -584,7 +581,7 @@ def load_seg(path):
 
 
 def keyword_toList(path,keyword):
-    search=os.path.join(path,'*'+keyword+'*.nii*')
+    search=os.path.join(path,'*'+keyword+'*')
     lista=sorted(glob.glob(search))
     print("list contains: "+str( len(lista))+" elements")
     return lista
@@ -664,6 +661,7 @@ def notNull_patches_andLAB(T1,FLAIR,LAB,nbNN=[3,3,3],number=10):
     num=0
     x=x_in[random_idxs[0:1]]
     y=y_in[random_idxs[0:1]]
+    indx_out= random_idxs[0:1]
     for i in random_idxs:
         if(num==number):
             break
