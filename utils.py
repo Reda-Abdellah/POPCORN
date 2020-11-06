@@ -22,6 +22,8 @@ import matplotlib.pyplot as plt
 import patch_extraction
 from sklearn.decomposition import PCA
 import data_augmentation
+from sklearn.cluster import KMeans
+
 
 
 def get_bottleneck_features_func(model):
@@ -194,6 +196,62 @@ def graph_based_rank(X, Q):
     print(end - start)
     return cg_ranks
 
+def get_clusters_and_centroids(unlabeled_tsne,labeled_tsne):
+    kmeans_u = KMeans(n_clusters=29, random_state=0).fit(unlabeled_tsne)
+    kmeans_l = KMeans(n_clusters=1, random_state=0).fit(labeled_tsne)
+    classes_u=kmeans_u.labels_
+    classes_l=kmeans_l.labels_
+    centroids_u=kmeans_u.cluster_centers_
+    centroids_l=kmeans_l.cluster_centers_
+    return classes_u,classes_l,centroids_u,centroids_l
+
+def n_times_get_cluster_by_cluster(cluster_dis_from_labeled,classes_u, choice_type='closest'):
+    bundles=[]
+    clusters=[]
+    cluster_number = classes_u.max()+1
+    for i in range(cluster_number):
+        cluster, indx_of_cluster_element= get_cluster_by_cluster(cluster_dis_from_labeled,classes_u, choice_type)
+        bundles.append(indx_of_cluster_element)
+        clusters.append(cluster)
+    return clusters,bundles
+
+def bundle_from_each_cluster(classes_u, number_of_bundles=29, bundle_size=100):
+    bundles=[]
+    max_classes=classes_u.max()+1
+    not_selected= np.ones(classes_u.shape).astype('bool')
+    cluster=0
+    classes_u_idx=np.arange(classes_u.shape[0])
+    np.random.seed(0)
+    #while(not_selected.any()):
+    for bundle_num in range(number_of_bundles):
+        print(bundle_num)
+        bundle=[]
+        for i in range(bundle_size):
+            idx=classes_u_idx[(classes_u==cluster) * not_selected]
+            #print(idx)
+            if(not len(idx)==0):
+                np.random.shuffle(idx)
+                bundle.append(idx[0])
+                not_selected[idx[0]]=False
+            else:
+                i=i-1
+            cluster=cluster+1
+            if(cluster== max_classes):
+                cluster=0
+        bundles.append(bundle)
+
+
+    return bundles
+
+def get_cluster_by_cluster(cluster_dis_from_labeled,classes_u, choice_type='closest'):
+    if (choice_type=='closest'):
+        cluster= np.argmin(cluster_dis_from_labeled)
+        cluster_dis_from_labeled[cluster]=9999999
+    if (choice_type=='farest'):
+        cluster= np.argmax(cluster_dis_from_labeled)
+        cluster_dis_from_labeled[cluster]=0
+    indx_of_cluster_element=np.where(classes_u==cluster)
+    return cluster, indx_of_cluster_element
 
 def give_n_closest_loop(ranks,n_indxs=100):
     indxs=[]
@@ -267,12 +325,16 @@ def pca_rank(X, Q,n_components=16):
     return brute_force_rank(X, Q)
 
 def tsne_rank(X, Q,n_components=16):
+    X, Q= tsne(X, Q,n_components)
+    return brute_force_rank(X, Q)
+
+def tsne(X, Q,n_components=16):
     x=np.concatenate((X,Q),axis=0)
     tsne = TSNE(n_components=n_components)
     x= tsne.fit_transform(x)
-    print(x)
+    #print(x)
     X,Q= x[:X.shape[0]],x[X.shape[0]:]
-    return brute_force_rank(X, Q)
+    return X, Q
 
 def brute_force_rank(X, Q):
     labeled_num=Q.shape[0]
@@ -597,10 +659,10 @@ def update_labeled_folder(listaT1,listaFLAIR,listaSEG,listaMASK=None,datafolder=
         except:
             T1,FLAIR=load_modalities(listaT1[i],listaFLAIR[i])
         seg=load_seg(listaSEG[i])
-        x_in, y_in = notNull_patches_andLAB(T1,FLAIR,seg,nbNN=[5,5,5],number=numbernotnullpatch)
+        x_in, y_in, out_indx = notNull_patches_andLAB(T1,FLAIR,seg,number=numbernotnullpatch)
         for j in range(x_in.shape[0]):
-            np.save(os.path.join(datafolder,'x_'+str(numb_data+j+i*numbernotnullpatch)+'.npy'),x_in[j:j+1])
-            np.save(os.path.join(datafolder,'y_'+str(numb_data+j+i*numbernotnullpatch)+'.npy'),y_in[j:j+1])
+            np.save(os.path.join(datafolder,'x_'+str(numb_data+j+i*numbernotnullpatch)+"_tile_"+str(out_indx[j])+'.npy'),x_in[j:j+1])
+            np.save(os.path.join(datafolder,'y_'+str(numb_data+j+i*numbernotnullpatch)+"_tile_"+str(out_indx[j])+'.npy'),y_in[j:j+1])
     return True
 
 def labeld_to_data(x,y,datafolder='data/'):

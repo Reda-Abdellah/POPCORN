@@ -25,8 +25,8 @@ Rootpath=os.getcwd()
 ps=[96,96,96]
 Epoch_per_step=2
 increment_new_data=100
-datafolder='data2/'
-resume=True
+datafolder='data_nearest/'
+resume=False
 resume_after_adding_pseudo_of_step=20
 load_precomputed_features=True
 load_labeled_dataset=False
@@ -36,9 +36,9 @@ regularized=True
 train_by_loading_alldata_to_RAM=False
 regularized_loss='loss3'
 loss_weights=[1,100]
-#filepath="One_Tile_96_2mods.h5"
+filepath="One_Tile_96_2mods.h5"
 #filepath="One_2mods_96_MSO_andISBI_gen_IQDA.h5"
-in_filepath="One_2mods_2it02same_loss3__1_1_96_ISBI_gen_IQDA.h5"
+in_filepath="One_2mods_2it033same_loss1[1_02]_96_MSO_andISBI_gen_IQDA.h5"
 out_filepath= lambda x: 'weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_'+regularized_loss+'__'+str(loss_weights[0])+'_'+str(loss_weights[1])+'__Kclosest_'+"%02d" % (x)+'.h5'
 #out_filepath= lambda x: 'weights/data_gen_iqda_volbrain_TSNE3_Kclosest_'+str(x)+'.h5'
 
@@ -52,6 +52,8 @@ if(regularized):
     model.compile(optimizer=optimizers.Adam(0.0001), loss=[losses.GJLsmooth,losses.BottleneckRegularized],loss_weights=loss_weights)
     fun = K.function([model.input, K.learning_phase()],[model.output[0]])
 else:
+    model=modelos.load_UNET3D_SLANT27_v2_groupNorm(96,96,96,2,2,24,0.5)
+    model.load_weights(filepath)
     model.compile(optimizer=optimizers.Adam(0.0001), loss=losses.GJLsmooth, metrics=[metrics.mdice])
     #savemodel=ModelCheckpoint('curruc.h5', monitor='val_mdice', verbose=1, save_best_only=True, save_weights_only=False, mode='max', period=1)
     fun = get_bottleneck_features_func(model)
@@ -104,12 +106,13 @@ if(load_labeled_dataset):
     classic_loading=False
     if(classic_loading):
         x_train,y_train,x_val,y_val=load_isbi(one_out=False)
-    else:
+    elif(not resume):
         #add data to datafolder
         #update_labeled_folder(listaT1_1,listaFLAIR_1,listaMASK_1,listaMASK=None,datafolder=datafolder,numbernotnullpatch=10)
         #update_labeled_folder(listaT1_2,listaFLAIR_2,listaSEG_2,listaMASK=None,datafolder=datafolder_val,numbernotnullpatch=10)
-        update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG1_3,listaMASK=None,datafolder=datafolder,numbernotnullpatch=27)
-        update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,numbernotnullpatch=27)
+        update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG1_3,listaMASK=None,datafolder=datafolder,numbernotnullpatch=15)
+        update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,numbernotnullpatch=15)
+
 
 
 
@@ -148,7 +151,8 @@ if(resume):
         #update num
         unlabeled_num=len(unlabeled_indxs)
     step=resume_after_adding_pseudo_of_step-1
-    model.load_weights(out_filepath(step))
+    if(not step==0):
+        model.load_weights(out_filepath(step))
 
 #labeld_to_data(x_train,y_train,datafolder=datafolder)
 
