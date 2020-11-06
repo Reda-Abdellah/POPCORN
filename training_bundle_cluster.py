@@ -136,6 +136,16 @@ if(resume):
 #Training
 while(unlabeled_num>increment_new_data):
     if(not step==0):
+        if(regularized):
+            model = modelos.load_UNET3D_bottleneck_regularized(ps[0],ps[1],ps[2],2,2,20,0.5,groups=4)
+            model.compile(optimizer=optimizers.Adam(0.0001), loss=[losses.GJLsmooth,losses.BottleneckRegularized],loss_weights=loss_weights)
+            fun = K.function([model.input, K.learning_phase()],[model.output[0]])
+        else:
+            model=modelos.load_UNET3D_SLANT27_v2_groupNorm(96,96,96,2,2,24,0.5)
+            model.load_weights(filepath)
+            model.compile(optimizer=optimizers.Adam(0.0001), loss=losses.GJLsmooth, metrics=[metrics.mdice])
+            #savemodel=ModelCheckpoint('curruc.h5', monitor='val_mdice', verbose=1, save_best_only=True, save_weights_only=False, mode='max', period=1)
+            fun = get_bottleneck_features_func(model)
         model.load_weights(out_filepath(step))
 
     new_pos_in_features = bundles[step]
