@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import patch_extraction
 from sklearn.decomposition import PCA
 import data_augmentation
-from sklearn.cluster import KMeans
+from sklearn.cluster import KMeans,DBSCAN
 
 
 
