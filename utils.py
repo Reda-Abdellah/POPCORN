@@ -266,6 +266,12 @@ def give_n_closest_loop(ranks,n_indxs=100):
             #ranks[indx,:]=0
     return indxs
 
+def get_clusters_dbscan(unlabeled_tsne,labeled_tsne):
+    u = DBSCAN(eps=0.8).fit(unlabeled_tsne)
+    l = DBSCAN(eps=0.8).fit(labeled_tsne)
+    classes_u= u.labels_
+    classes_l= l.labels_
+    return classes_u,classes_l
 
 def give_n_closest(ranks,n_indxs=100):
     indxs=[]

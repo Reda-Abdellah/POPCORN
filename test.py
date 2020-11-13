@@ -1,10 +1,12 @@
-import modelos, os, glob, losses, metrics
+import modelos, os, glob, losses, metrics,gc
 from utils import seg_majvote,load_modalities
 import nibabel as nii
 from keras import optimizers
 import numpy as np
+from keras import backend as K
 
-os.environ["CUDA_VISIBLE_DEVICES"]='1'
+
+os.environ["CUDA_VISIBLE_DEVICES"]='2'
 img_path='../lib/msseg/'
 #WEIGHTS=''
 #pred_path=''
@@ -13,13 +15,11 @@ loss_weights=[1,100]
 
 listaT1 = sorted(glob.glob(img_path+"*t1*.nii*"))
 listaFLAIR = sorted(glob.glob(img_path+"*flair*.nii*"))
-if(regularized):
-    model = modelos.load_UNET3D_bottleneck_regularized(96,96,96,2,2,20,0.5,groups=4)
-else:
-    model=modelos.load_UNET3D_SLANT27_v2_groupNorm(96,96,96,2,2,24,0.5)
+
 
 #listaWeights = sorted(glob.glob("One_Tile_96_2mods*.h5"))
-near_weights = sorted(glob.glob("weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_loss3__1_100__Kclosest_v3/*.h5"))
+clusters_bundle = sorted(glob.glob("weights/clusters_bundle/*.h5"))
+cluster_by_cluster = sorted(glob.glob("weights/cluster_by_cluster/*.h5"))
 #farest_weights= sorted(glob.glob("weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_loss3__1_100__Kfarest/*.h5"))
 
 def seg_to_folder_with_Weightlist(listaWeights,model,listaT1,listaFLAIR):
@@ -34,7 +34,11 @@ def seg_to_folder_with_Weightlist(listaWeights,model,listaT1,listaFLAIR):
             print ("Successfully created the directory %s " % pred_path)
         seg_to_folder(pred_path,model,WEIGHTS,listaT1,listaFLAIR)
 
-def seg_to_folder(pred_path,model,WEIGHTS,listaT1,listaFLAIR):
+def seg_to_folder(pred_path,regularized,WEIGHTS,listaT1,listaFLAIR):
+    if(regularized):
+        model = modelos.load_UNET3D_bottleneck_regularized(96,96,96,2,2,20,0.5,groups=4)
+    else:
+        model=modelos.load_UNET3D_SLANT27_v2_groupNorm(96,96,96,2,2,24,0.5)
     model.load_weights(WEIGHTS)
     if(regularized):
         model.compile(optimizer=optimizers.Adam(0.0001), loss=[losses.GJLsmooth,losses.BottleneckRegularized],loss_weights=loss_weights)
@@ -54,6 +58,8 @@ def seg_to_folder(pred_path,model,WEIGHTS,listaT1,listaFLAIR):
         T1_img = nii.load(T1_name)
         img = nii.Nifti1Image(SEG_mask.astype(np.uint8), T1_img.affine )
         img.to_filename(name)
+    K.clear_session()
+    gc.collect() #free memory
 
-#seg_to_folder_with_Weightlist(random_weights,model,listaT1,listaFLAIR)
-seg_to_folder_with_Weightlist(near_weights,model,listaT1,listaFLAIR)
+#seg_to_folder_with_Weightlist(cluster_by_cluster,regularized,listaT1,listaFLAIR)
+seg_to_folder_with_Weightlist(clusters_bundle,regularized,listaT1,listaFLAIR)
