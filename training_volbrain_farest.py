@@ -22,6 +22,7 @@ from keras import backend as K
 os.environ["CUDA_VISIBLE_DEVICES"]='1'
 Rootpath=os.getcwd()
 nbNN=[5,5,5]
+dataset_path="/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib"
 ps=[96,96,96]
 Epoch_per_step=2
 increment_new_data=100
@@ -58,13 +59,13 @@ else:
     fun = get_bottleneck_features_func(model)
 
 if(unlabeled_dataset=="volbrain"):
-    listaT1 = sorted(glob.glob("../lib/volbrain_qc/n_mfmni*t1*.nii*"))
-    listaFLAIR = sorted(glob.glob("../lib/volbrain_qc/n_mfmni*flair*.nii*"))
-    listaMASK = sorted(glob.glob("../lib/volbrain_qc/mask*.nii*"))
+    listaT1 = sorted(glob.glob(dataset_path+"/volbrain_qc/n_mfmni*t1*.nii*"))
+    listaFLAIR = sorted(glob.glob(dataset_path+"/volbrain_qc/n_mfmni*flair*.nii*"))
+    listaMASK = sorted(glob.glob(dataset_path+"/volbrain_qc/mask*.nii*"))
     listaMASK = np.array(listaMASK)
 elif(unlabeled_dataset=="isbi_test"):
-    listaT1 = sorted(glob.glob("../lib/ISBI_preprocess/test*mprage*.nii*"))
-    listaFLAIR = sorted(glob.glob("../lib/ISBI_preprocess/test*flair*.nii*"))
+    listaT1 = sorted(glob.glob(dataset_path+"/ISBI_preprocess/test*mprage*.nii*"))
+    listaFLAIR = sorted(glob.glob(dataset_path+"/ISBI_preprocess/test*flair*.nii*"))
 
 #listaT1 =listaT1[:5]
 #listaFLAIR =listaFLAIR[:5]
@@ -73,10 +74,10 @@ listaT1=np.array(listaT1)
 listaFLAIR=np.array(listaFLAIR)
 
 #indexing labeled data
-lib_path_1 = os.path.join("..","lib","MS_O")
-lib_path_2 = os.path.join("..","lib","msseg")
-lib_path_3 = os.path.join("..","lib","isbi_final_train_preprocessed")
-#lib_path = os.path.join("lib","MS_XX_P")
+lib_path_1 = os.path.join(dataset_path,"MS_O")
+lib_path_2 = os.path.join(dataset_path,"msseg")
+lib_path_3 = os.path.join(dataset_path,"isbi_final_train_preprocessed")
+
 
 listaT1_1=keyword_toList(path=lib_path_1,keyword="t1")
 listaFLAIR_1=keyword_toList(path=lib_path_1,keyword="flair")
@@ -186,7 +187,7 @@ while(unlabeled_num>increment_new_data):
 
     train_files_bytiles=[]
     for i in range(27):
-    	train_files_bytiles.append(keyword_toList(datafolder,"tile_"+str(i)) )
+    	train_files_bytiles.append(keyword_toList(datafolder,"tile_"+str(i)+".npy") )
 
     print('training with new data...')
     if(train_by_loading_alldata_to_RAM):

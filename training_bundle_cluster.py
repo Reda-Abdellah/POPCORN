@@ -15,6 +15,7 @@ from keras import backend as K
 os.environ["CUDA_VISIBLE_DEVICES"]='1'
 Rootpath=os.getcwd()
 #nbNN=[5,5,5]
+dataset_path="/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib"
 ps=[96,96,96]
 Epoch_per_step=2
 increment_new_data=100
@@ -52,13 +53,13 @@ else:
     fun = get_bottleneck_features_func(model)
 
 if(unlabeled_dataset=="volbrain"):
-    listaT1 = sorted(glob.glob("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib/volbrain_qc/n_mfmni*t1*.nii*"))
-    listaFLAIR = sorted(glob.glob("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib/volbrain_qc/n_mfmni*flair*.nii*"))
-    listaMASK = sorted(glob.glob("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib/volbrain_qc/mask*.nii*"))
+    listaT1 = sorted(glob.glob(dataset_path+"/volbrain_qc/n_mfmni*t1*.nii*"))
+    listaFLAIR = sorted(glob.glob(dataset_path+"/volbrain_qc/n_mfmni*flair*.nii*"))
+    listaMASK = sorted(glob.glob(dataset_path+"/volbrain_qc/mask*.nii*"))
     listaMASK = np.array(listaMASK)
 elif(unlabeled_dataset=="isbi_test"):
-    listaT1 = sorted(glob.glob("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib/ISBI_preprocess/test*mprage*.nii*"))
-    listaFLAIR = sorted(glob.glob("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib/ISBI_preprocess/test*flair*.nii*"))
+    listaT1 = sorted(glob.glob(dataset_path+"/ISBI_preprocess/test*mprage*.nii*"))
+    listaFLAIR = sorted(glob.glob(dataset_path+"/ISBI_preprocess/test*flair*.nii*"))
 
 #listaT1 =listaT1[:5]
 #listaFLAIR =listaFLAIR[:5]
@@ -67,10 +68,10 @@ listaT1=np.array(listaT1)
 listaFLAIR=np.array(listaFLAIR)
 
 #indexing labeled data
-lib_path_1 = os.path.join("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain","lib","MS_O")
-lib_path_2 = os.path.join("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain","lib","msseg")
-lib_path_3 = os.path.join("/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain","lib","isbi_final_train_preprocessed")
-#lib_path = os.path.join("lib","MS_XX_P")
+lib_path_1 = os.path.join(dataset_path,"MS_O")
+lib_path_2 = os.path.join(dataset_path,"msseg")
+lib_path_3 = os.path.join(dataset_path,"isbi_final_train_preprocessed")
+
 
 listaT1_1=keyword_toList(path=lib_path_1,keyword="t1")
 listaFLAIR_1=keyword_toList(path=lib_path_1,keyword="flair")
@@ -148,22 +149,25 @@ while(unlabeled_num>increment_new_data):
             fun = get_bottleneck_features_func(model)
         model.load_weights(out_filepath(step))
 
-    new_pos_in_features = bundles[step]
-    step=step+1
-    print('step: '+str(step))
-    print('loading new data...')
+    if(not resume):
+        new_pos_in_features = bundles[step]
 
-    print(new_pos_in_features)
-    not_new_pos_in_features = [x for x in range(unlabeled_num) if x not in new_pos_in_features]
-    pseudolabeled_indxs= pseudolabeled_indxs+ new_pos_in_features
-    unlabeled_indxs =  [x for x in unlabeled_indxs if x not in pseudolabeled_indxs]
-    #update num
-    unlabeled_num=len(unlabeled_indxs)
-    update_data_folder(model,new_pos_in_features,listaT1,listaFLAIR,listaMASK,datafolder=datafolder,regularized=True)
+        step=step+1
+        print('step: '+str(step))
+        print('loading new data...')
 
+        print(new_pos_in_features)
+        not_new_pos_in_features = [x for x in range(unlabeled_num) if x not in new_pos_in_features]
+        pseudolabeled_indxs= pseudolabeled_indxs+ new_pos_in_features
+        unlabeled_indxs =  [x for x in unlabeled_indxs if x not in pseudolabeled_indxs]
+        #update num
+        unlabeled_num=len(unlabeled_indxs)
+        update_data_folder(model,new_pos_in_features,listaT1,listaFLAIR,listaMASK,datafolder=datafolder,regularized=True)
+        resume=False
+        
     train_files_bytiles=[]
     for i in range(27):
-        train_files_bytiles.append(keyword_toList(datafolder,"tile_"+str(i)) )
+        train_files_bytiles.append(keyword_toList(datafolder,"tile_"+str(i)+".npy") )
 
 
     print('training with new data...')

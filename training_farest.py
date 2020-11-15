@@ -20,6 +20,7 @@ import losses,metrics
 
 os.environ["CUDA_VISIBLE_DEVICES"]='1'
 Rootpath=os.getcwd()
+dataset_path="/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib"
 nbNN=[5,5,5]
 ps=[96,96,96]
 Epoch_per_step=5
@@ -34,20 +35,26 @@ model.compile(optimizer=optimizers.Adam(0.0001), loss=losses.GJLsmooth, metrics=
 savemodel=ModelCheckpoint('curruc_far.h5', monitor='val_mdice', verbose=1, save_best_only=True, save_weights_only=False, mode='max', period=1)
 
 fun=get_bottleneck_features_func(model)
-"""
-listaT1 = sorted(glob.glob("../lib/volbrain_qc/n_mfmni*t1*.nii*"))
-listaFLAIR = sorted(glob.glob("../lib/volbrain_qc/n_mfmni*flair*.nii*"))
-listaMASK = sorted(glob.glob("../lib/volbrain_qc/mask*.nii*"))
-listaMASK=np.array(listaMASK)
-"""
-listaT1 = sorted(glob.glob("../lib/ISBI_preprocess/test*mprage*.nii*"))
-listaFLAIR = sorted(glob.glob("../lib/ISBI_preprocess/test*flair*.nii*"))
+if(unlabeled_dataset=="volbrain"):
+    listaT1 = sorted(glob.glob(dataset_path+"/volbrain_qc/n_mfmni*t1*.nii*"))
+    listaFLAIR = sorted(glob.glob(dataset_path+"/volbrain_qc/n_mfmni*flair*.nii*"))
+    listaMASK = sorted(glob.glob(dataset_path+"/volbrain_qc/mask*.nii*"))
+    listaMASK = np.array(listaMASK)
+elif(unlabeled_dataset=="isbi_test"):
+    listaT1 = sorted(glob.glob(dataset_path+"/ISBI_preprocess/test*mprage*.nii*"))
+    listaFLAIR = sorted(glob.glob(dataset_path+"/ISBI_preprocess/test*flair*.nii*"))
+
+#listaT1 =listaT1[:5]
+#listaFLAIR =listaFLAIR[:5]
 
 listaT1=np.array(listaT1)
 listaFLAIR=np.array(listaFLAIR)
 
-listaT1_isbi = sorted(glob.glob("../lib/isbi_final_train_preprocessed/training*mprage*.nii*"))
-listaFLAIR_isbi = sorted(glob.glob("../lib/isbi_final_train_preprocessed/training*flair*.nii*"))
+#indexing labeled data
+lib_path_1 = os.path.join(dataset_path,"lib","MS_O")
+lib_path_2 = os.path.join(dataset_path,"lib","msseg")
+lib_path_3 = os.path.join(dataset_path,"lib","isbi_final_train_preprocessed")
+
 
 listaT1_isbi=np.array(listaT1_isbi)
 listaFLAIR_isbi=np.array(listaFLAIR_isbi)

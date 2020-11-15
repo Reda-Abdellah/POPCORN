@@ -161,7 +161,7 @@ while(unlabeled_num>increment_new_data):
 
     train_files_bytiles=[]
     for i in range(27):
-    	train_files_bytiles.append(keyword_toList(datafolder,"tile_"+str(i)) )
+    	train_files_bytiles.append(keyword_toList(datafolder,"tile_"+str(i)+".npy") )
 
     print('training with new data...')
     if(train_by_loading_alldata_to_RAM):

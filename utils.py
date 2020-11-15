@@ -738,11 +738,11 @@ def notNull_patches_andLAB(T1,FLAIR,LAB,nbNN=[3,3,3],number=10):
             if(num==0):
                 x=x_in[i:i+1]
                 y=y_in[i:i+1]
-                indx_out= np.array([random_idxs[i]])
+                indx_out= np.array([i])
             else:
                 x=np.concatenate((x,x_in[i:i+1]),axis=0)
                 y=np.concatenate((y,y_in[i:i+1]),axis=0)
-                indx_out= np.concatenate((indx_out,np.array([random_idxs[i]])))
+                indx_out= np.concatenate((indx_out,np.array([i])))
             num=num+1
     return x, y, indx_out
 
