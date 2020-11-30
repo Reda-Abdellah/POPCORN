@@ -25,6 +25,105 @@ import data_augmentation
 from sklearn.cluster import KMeans,DBSCAN
 
 
+def get_list_from_ropes(ropes):
+    out=[]
+    for rope in ropes[::-1]:
+        out=out+rope[::-1]
+    return out
+
+def get_ropes(neibhors_and_dis_):
+    neibhors_and_dis=np.copy(neibhors_and_dis_)
+    all_classes=list(range(neibhors_and_dis.shape[0]))
+    ropes=[]
+    while(len(all_classes)>0):
+        still_on_a_rope=True
+        fist_element,not_neighbor=np.where( neibhors_and_dis[:,2:] == neibhors_and_dis[:,2:].max() )
+        fist_element,not_neighbor=fist_element[0],not_neighbor[0]
+        #print(fist_element)
+        #print(not_neighbor)
+        neibhors_and_dis[fist_element,2:]=-1000000
+        all_classes.remove(fist_element)
+        #print(all_classes)
+        rope=Rope(fist_element)
+
+        if(not_neighbor==0):
+            next_element=neibhors_and_dis[fist_element,1]
+        else:
+            next_element=neibhors_and_dis[fist_element,0]
+        next_element=int(next_element)
+        rope.add_elements_end(next_element)
+        all_classes.remove(next_element)
+        neibhors_and_dis[fist_element,2:]=-1000000
+        while(still_on_a_rope):
+            #print(next_element)
+            neighbor1,neighbor2= neibhors_and_dis[next_element,0], neibhors_and_dis[next_element,1]
+            neighbor1,neighbor2= int(neighbor1),int(neighbor2)
+            #print(neighbor1)
+            #print(neighbor2)
+
+            if( (neighbor1 in all_classes) and not (neighbor2 in all_classes ) ):
+                next_element=neighbor1
+            elif( (neighbor2 in all_classes) and not (neighbor1 in all_classes ) ):
+                next_element=neighbor2
+            elif( (neighbor1 in all_classes) and (neighbor2 in all_classes ) ):
+                """
+                if(neibhors_and_dis[next_element,2]>neibhors_and_dis[next_element,3]):
+                    next_element=neighbor2
+                else:
+                    next_element=neighbor1
+                """
+                print('error1')
+                return 1
+            elif( not (neighbor1 in all_classes) and not (neighbor2 in all_classes ) ):
+                print('generate next rope')
+                still_on_a_rope=False
+                continue
+            else:
+                print('error2')
+                return 1
+            next_element=int(next_element)
+            rope.add_elements_end(next_element)
+            all_classes.remove(next_element)
+            neibhors_and_dis[fist_element,2:]=-1000000
+        ropes.append(rope.rope_elements)
+        print(ropes[-1])
+    return ropes
+
+class Rope:
+    def __init__(self,first_element):
+        self.rope_elements=[first_element]
+    def get_last_element(self):
+        return self.rope_elements[-1]
+    def get_first_element(self):
+        return self.rope_elements[0]
+    def get_rope(self):
+        return self.rope_elements
+    def add_elements_start(self,elements):
+        if(not isinstance(new_elements, list)):
+            new_elements=[new_elements]
+        self.rope_elements=new_elements+self.rope_elements
+    def add_elements_end(self,new_elements):
+        if(not isinstance(new_elements, list)):
+            new_elements=[new_elements]
+        self.rope_elements=self.rope_elements+new_elements
+
+def get_neibhors_and_dis(unlabeled_tsne,labels):
+    neibhors_and_dis=np.zeros((labels.max(),4))
+    for i in range(labels.max()):
+        print(i)
+        tsnee=np.copy(unlabeled_tsne)
+        tsnee[labels==i]=10000
+        dis=brute_force_rank(tsnee,unlabeled_tsne[labels==i])
+        label1=labels[np.where(dis==dis.min())[0][0]]
+        neibhors_and_dis[i,0]=label1
+        neibhors_and_dis[i,2]=dis.min()
+
+        tsnee[labels==label1]=10000
+        dis=brute_force_rank(tsnee,unlabeled_tsne[labels==i])
+        label2=labels[np.where(dis==dis.min())[0][0]]
+        neibhors_and_dis[i,1]=label2
+        neibhors_and_dis[i,3]=dis.min()
+    return neibhors_and_dis
 
 def get_bottleneck_features_func(model):
     input1 = model.input               # input placeholder
@@ -213,6 +312,16 @@ def n_times_get_cluster_by_cluster(cluster_dis_from_labeled,classes_u, choice_ty
         cluster, indx_of_cluster_element= get_cluster_by_cluster(cluster_dis_from_labeled,classes_u, choice_type)
         bundles.append(indx_of_cluster_element)
         clusters.append(cluster)
+    return clusters,bundles
+
+def get_clusters_with_labels(classes_u, ropes_list):
+    bundles=[]
+    clusters=[]
+    for i in ropes_list:
+        indx_of_cluster_element=np.where(classes_u==i)[0]
+        print(indx_of_cluster_element)
+        bundles.append(indx_of_cluster_element)
+        clusters.append(i)
     return clusters,bundles
 
 def bundle_from_each_cluster(classes_u, number_of_bundles=29, bundle_size=100):

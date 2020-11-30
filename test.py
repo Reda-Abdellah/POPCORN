@@ -18,8 +18,11 @@ listaFLAIR = sorted(glob.glob(img_path+"*flair*.nii*"))
 
 
 #listaWeights = sorted(glob.glob("One_Tile_96_2mods*.h5"))
-clusters_bundle = sorted(glob.glob("weights/clusters_bundle/*.h5"))
-cluster_by_cluster = sorted(glob.glob("weights/cluster_by_cluster/*.h5"))
+#clusters_far = sorted(glob.glob("weights/reg_farest_v2/*.h5"))
+clusters_tsne1 = sorted(glob.glob("weights/rest_tsne1/*.h5"))
+#bundle=sorted(glob.glob("weights/clusters_bundle/*.h5"))
+
+#cluster_by_cluster = sorted(glob.glob("weights/cluster_by_cluster/*.h5"))
 #farest_weights= sorted(glob.glob("weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_loss3__1_100__Kfarest/*.h5"))
 
 def seg_to_folder_with_Weightlist(listaWeights,model,listaT1,listaFLAIR):
@@ -61,5 +64,5 @@ def seg_to_folder(pred_path,regularized,WEIGHTS,listaT1,listaFLAIR):
     K.clear_session()
     gc.collect() #free memory
 
-#seg_to_folder_with_Weightlist(cluster_by_cluster,regularized,listaT1,listaFLAIR)
-seg_to_folder_with_Weightlist(clusters_bundle,regularized,listaT1,listaFLAIR)
+#seg_to_folder_with_Weightlist(clusters_far,regularized,listaT1,listaFLAIR)
+seg_to_folder_with_Weightlist(clusters_tsne1,regularized,listaT1,listaFLAIR)

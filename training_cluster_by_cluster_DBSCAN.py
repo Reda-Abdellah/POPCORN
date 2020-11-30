@@ -12,7 +12,7 @@ from keras import optimizers
 from keras.callbacks import ModelCheckpoint, EarlyStopping
 from keras import backend as K
 
-os.environ["CUDA_VISIBLE_DEVICES"]='1'
+os.environ["CUDA_VISIBLE_DEVICES"]='2'
 Rootpath=os.getcwd()
 dataset_path="/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib"
 #nbNN=[5,5,5]
@@ -21,9 +21,9 @@ Epoch_per_step=2
 increment_new_data=100
 datafolder='data_dbscan/'
 resume=False
-resume_after_adding_pseudo_of_step=1
+resume_after_adding_pseudo_of_step=2
 load_precomputed_features=True
-load_labeled_dataset=True
+load_labeled_dataset=False
 unlabeled_dataset="volbrain"
 #unlabeled_dataset="isbi_test"
 regularized=True
@@ -126,9 +126,16 @@ else:
 
 labeled_tsne,unlabeled_tsne= tsne(bottleneck_features_labeled, bottleneck_features_unlabeled,n_components=3)
 classes_u,classes_l= get_clusters_dbscan(unlabeled_tsne,labeled_tsne)
-classes_max=classes_u.max()
-cluster_dis_from_labeled= np.ones((classes_max,1))
-clusters,bundles= n_times_get_cluster_by_cluster(cluster_dis_from_labeled,classes_u, choice_type='closest')
+neibhors_and_dis=get_neibhors_and_dis(unlabeled_tsne,classes_u)
+print(neibhors_and_dis)
+ropes=get_ropes(neibhors_and_dis)
+print(ropes)
+ropes_list=get_list_from_ropes(ropes)
+
+clusters,bundles=get_clusters_with_labels(classes_u, ropes_list)
+#classes_max=classes_u.max()
+#cluster_dis_from_labeled= np.ones((classes_max,1))
+#clusters,bundles= n_times_get_cluster_by_cluster(cluster_dis_from_labeled,classes_u, choice_type='closest')
 
 if(resume):
     step=resume_after_adding_pseudo_of_step-1
@@ -151,21 +158,20 @@ while(unlabeled_num>increment_new_data):
         model.load_weights(out_filepath(step))
 
 
-    if(not resume):
-        new_pos_in_features = bundles[step][0].tolist()
-        print('adding cluster: '+str(clusters[step]))
-        step=step+1
-        print('step: '+str(step))
-        print('loading new data...')
+    new_pos_in_features = bundles[step].tolist()
+    print('adding cluster: '+str(clusters[step]))
+    step=step+1
+    print('step: '+str(step))
+    print('loading new data...')
 
-        print(new_pos_in_features)
-        not_new_pos_in_features = [x for x in range(unlabeled_num) if x not in new_pos_in_features]
-        pseudolabeled_indxs= pseudolabeled_indxs+ new_pos_in_features
-        unlabeled_indxs =  [x for x in unlabeled_indxs if x not in pseudolabeled_indxs]
-        #update num
-        unlabeled_num=len(unlabeled_indxs)
-        update_data_folder(model,new_pos_in_features,listaT1,listaFLAIR,listaMASK,datafolder=datafolder,regularized=True)
-        resume=False
+    print(new_pos_in_features)
+    not_new_pos_in_features = [x for x in range(unlabeled_num) if x not in new_pos_in_features]
+    pseudolabeled_indxs= pseudolabeled_indxs+ new_pos_in_features
+    unlabeled_indxs =  [x for x in unlabeled_indxs if x not in pseudolabeled_indxs]
+    #update num
+    unlabeled_num=len(unlabeled_indxs)
+    update_data_folder(model,new_pos_in_features,listaT1,listaFLAIR,listaMASK,datafolder=datafolder,regularized=True)
+
     train_files_bytiles=[]
     for i in range(27):
         train_files_bytiles.append(keyword_toList(datafolder,"tile_"+str(i)+".npy") )
