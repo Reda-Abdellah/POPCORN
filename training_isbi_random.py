@@ -19,18 +19,18 @@ import Data_fast
 import losses,metrics
 from keras import backend as K
 
-os.environ["CUDA_VISIBLE_DEVICES"]='2'
+os.environ["CUDA_VISIBLE_DEVICES"]='0'
 Rootpath=os.getcwd()
 nbNN=[5,5,5]
 ps=[96,96,96]
-Epoch_per_step=2
-increment_new_data=100
+Epoch_per_step=5
+increment_new_data=10
 datafolder='data_random/'
 resume=False
 resume_after_adding_pseudo_of_step=1
 load_labeled_dataset=True
-unlabeled_dataset="volbrain"
-#unlabeled_dataset="isbi_test"
+#unlabeled_dataset="volbrain"
+unlabeled_dataset="isbi_test"
 regularized=True
 train_by_loading_alldata_to_RAM=False
 regularized_loss='loss3'
@@ -40,7 +40,7 @@ lib_path="/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib/"
 #in_filepath="One_Tile_96_2mods.h5"
 #filepath="One_2mods_96_MSO_andISBI_gen_IQDA.h5"
 in_filepath="/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/SSL/One_2mods_2it033same_loss1[1_02]_96_MSO_andISBI_gen_IQDA.h5"
-out_filepath= lambda x: 'weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_'+regularized_loss+'__'+str(loss_weights[0])+'_'+str(loss_weights[1])+'__random_'+str(x)+'_.h5'
+out_filepath= lambda x: 'weights/data_gen_iqda_2it_isbi_TSNE3_bottleneckRegulirized_'+regularized_loss+'__'+str(loss_weights[0])+'_'+str(loss_weights[1])+'__random_'+str(x)+'_.h5'
 #out_filepath= lambda x: 'weights/data_gen_iqda_volbrain_TSNE3_random_'+"%02d" % (x)+'_.h5'
 
 
@@ -157,8 +157,7 @@ while(unlabeled_num>increment_new_data):
         #update indexes
         pseudolabeled_indxs= pseudolabeled_indxs+ new_pseudo
         unlabeled_indxs =  [x for x in unlabeled_indxs if x not in pseudolabeled_indxs]
-        update_data_folder(model,new_pseudo,listaT1,listaFLAIR,listaMASK,datafolder=datafolder,regularized=regularized)
-        unlabeled_num=len(unlabeled_indxs)
+        update_data_folder(model,new_pseudo,listaT1,listaFLAIR,datafolder=datafolder,regularized=regularized)
 
     train_files_bytiles=[]
     for i in range(27):

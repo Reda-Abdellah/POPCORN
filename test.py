@@ -6,24 +6,19 @@ import numpy as np
 from keras import backend as K
 
 
-os.environ["CUDA_VISIBLE_DEVICES"]='2'
-img_path='../lib/msseg/'
+os.environ["CUDA_VISIBLE_DEVICES"]='1'
+#img_path='../lib/msseg/'
+img_path='../lib/MS_O/'
 #WEIGHTS=''
 #pred_path=''
-regularized=True
+#regularized=False
 loss_weights=[1,100]
 
 listaT1 = sorted(glob.glob(img_path+"*t1*.nii*"))
 listaFLAIR = sorted(glob.glob(img_path+"*flair*.nii*"))
 
+#print(listaT1)
 
-#listaWeights = sorted(glob.glob("One_Tile_96_2mods*.h5"))
-#clusters_far = sorted(glob.glob("weights/reg_farest_v2/*.h5"))
-clusters_tsne1 = sorted(glob.glob("weights/rest_tsne1/*.h5"))
-#bundle=sorted(glob.glob("weights/clusters_bundle/*.h5"))
-
-#cluster_by_cluster = sorted(glob.glob("weights/cluster_by_cluster/*.h5"))
-#farest_weights= sorted(glob.glob("weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_loss3__1_100__Kfarest/*.h5"))
 
 def seg_to_folder_with_Weightlist(listaWeights,model,listaT1,listaFLAIR):
     for WEIGHTS in listaWeights:
@@ -64,5 +59,20 @@ def seg_to_folder(pred_path,regularized,WEIGHTS,listaT1,listaFLAIR):
     K.clear_session()
     gc.collect() #free memory
 
-#seg_to_folder_with_Weightlist(clusters_far,regularized,listaT1,listaFLAIR)
-seg_to_folder_with_Weightlist(clusters_tsne1,regularized,listaT1,listaFLAIR)
+tsne1=sorted(glob.glob("weights/tsne1/*.h5"))
+random_noreg=sorted(glob.glob("weights/data_gen_iqda_volbrain_TSNE3_random_without_reg/*.h5"))
+random=sorted(glob.glob("weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_loss3__1_100__random/*.h5"))
+nearest=sorted(glob.glob("weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_loss3__1_100__Kclosest_v3/*.h5"))
+nearest_noreg=sorted(glob.glob("weights/data_gen_idqa_TSNE3_nearest_without_reg/*.h5"))
+all_noreg=sorted(glob.glob("weights/noreg_volbrain_all_increase/*.h5"))
+all=sorted(glob.glob("weights/all_at_once_increment/*.h5"))
+
+"""
+seg_to_folder_with_Weightlist(random,True,listaT1,listaFLAIR)
+seg_to_folder_with_Weightlist(nearest,True,listaT1,listaFLAIR)
+seg_to_folder_with_Weightlist(all,True,listaT1,listaFLAIR)
+seg_to_folder_with_Weightlist(tsne1,True,listaT1,listaFLAIR)
+seg_to_folder_with_Weightlist(random_noreg,False,listaT1,listaFLAIR)
+seg_to_folder_with_Weightlist(nearest_noreg,False,listaT1,listaFLAIR)
+"""
+seg_to_folder_with_Weightlist(all_noreg,False,listaT1,listaFLAIR)

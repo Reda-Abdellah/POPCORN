@@ -1,40 +1,45 @@
-import umap,os,glob,gc,math,operator
-import losses,metrics,Data_fast,modelos
+import umap
 from sklearn.datasets import load_digits
+import os
+import glob
 import numpy as np
 import nibabel as nii
+import math
+import operator
 from scipy.ndimage.interpolation import zoom
 from keras.models import load_model
 from scipy import ndimage
 import scipy.io as sio
+#import matplotlib.pyplot as plt
+import modelos
 from utils import *
 from keras import optimizers
 from keras.callbacks import ModelCheckpoint, EarlyStopping
+import Data_fast
+import losses,metrics
 from keras import backend as K
 
-os.environ["CUDA_VISIBLE_DEVICES"]='2'
+os.environ["CUDA_VISIBLE_DEVICES"]='1'
 Rootpath=os.getcwd()
+nbNN=[5,5,5]
 dataset_path="/data1/rkamraoui/DeepvolBrain/Segmentation/DeepLesionBrain/lib"
-#nbNN=[5,5,5]
 ps=[96,96,96]
 Epoch_per_step=2
-increment_new_data=100
-datafolder='data_dbscan/'
-resume=True
-resume_after_adding_pseudo_of_step=11
-load_precomputed_features=True
+datafolder='data_all_noreg/'
+resume=False
+resume_after_adding_pseudo_of_step=10
 load_labeled_dataset=False
 unlabeled_dataset="volbrain"
 #unlabeled_dataset="isbi_test"
-regularized=True
+regularized=False
 train_by_loading_alldata_to_RAM=False
 regularized_loss='loss3'
 loss_weights=[1,100]
-filepath="One_Tile_96_2mods.h5"
+in_filepath="One_Tile_96_2mods.h5"
 #filepath="One_2mods_96_MSO_andISBI_gen_IQDA.h5"
-in_filepath="One_2mods_2it033same_loss1[1_02]_96_MSO_andISBI_gen_IQDA.h5"
-out_filepath= lambda x: 'weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_'+regularized_loss+'__'+str(loss_weights[0])+'_'+str(loss_weights[1])+'__dbscan_clusterbycluster_'+"%02d" % (x)+'.h5'
-#out_filepath= lambda x: 'weights/data_gen_iqda_volbrain_TSNE3_Kclosest_'+str(x)+'.h5'
+#in_filepath="One_2mods_2it033same_loss1[1_02]_96_MSO_andISBI_gen_IQDA.h5"
+#out_filepath= lambda x: 'weights/data_gen_iqda_2it_volbrain_TSNE3_bottleneckRegulirized_'+regularized_loss+'__'+str(loss_weights[0])+'_'+str(loss_weights[1])+'__Kfarest_'+"%02d" % (x)+'.h5'
+out_filepath= lambda x: 'weights/noreg_volbrain_TSNE3_all_increament100_'+"%02d" % (x)+'.h5'
 
 
 #model=modelos.load_UNET3D_SLANT27_v2_groupNorm(96,96,96,2,2,24,0.5)
@@ -47,7 +52,6 @@ if(regularized):
     fun = K.function([model.input, K.learning_phase()],[model.output[0]])
 else:
     model=modelos.load_UNET3D_SLANT27_v2_groupNorm(96,96,96,2,2,24,0.5)
-    model.load_weights(filepath)
     model.compile(optimizer=optimizers.Adam(0.0001), loss=losses.GJLsmooth, metrics=[metrics.mdice])
     #savemodel=ModelCheckpoint('curruc.h5', monitor='val_mdice', verbose=1, save_best_only=True, save_weights_only=False, mode='max', period=1)
     fun = get_bottleneck_features_func(model)
@@ -72,6 +76,7 @@ lib_path_1 = os.path.join(dataset_path,"MS_O")
 lib_path_2 = os.path.join(dataset_path,"msseg")
 lib_path_3 = os.path.join(dataset_path,"isbi_final_train_preprocessed")
 
+
 listaT1_1=keyword_toList(path=lib_path_1,keyword="t1")
 listaFLAIR_1=keyword_toList(path=lib_path_1,keyword="flair")
 #listaSEG_1=keyword_toList(path=lib_path_1,keyword="lesion")
@@ -86,8 +91,11 @@ listaFLAIR_3=keyword_toList(path=lib_path_3,keyword="flair")
 listaSEG1_3=keyword_toList(path=lib_path_3,keyword="mask1")
 listaSEG2_3=keyword_toList(path=lib_path_3,keyword="mask2")
 
-listaT1_labeled= np.array(listaT1_1+listaT1_3)
-listaFLAIR_labeled= np.array(listaFLAIR_1+listaFLAIR_3)
+#listaT1_labeled= np.array(listaT1_1+listaT1_3)
+#listaFLAIR_labeled= np.array(listaFLAIR_1+listaFLAIR_3)
+
+listaT1_labeled= np.array(listaT1_3)
+listaFLAIR_labeled= np.array(listaFLAIR_3)
 
 unlabeled_indxs= range(len(listaT1))
 pseudolabeled_indxs=[]
@@ -107,91 +115,31 @@ if(load_labeled_dataset):
         update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,numbernotnullpatch=15)
 
 
+
 step=0
 model.load_weights(in_filepath)
 
 
-if(load_precomputed_features):
-    print('loading precomputed features...')
-    bottleneck_features_unlabeled=np.load('bottleneck_features_unlabeled_withreg.npy')
-    bottleneck_features_labeled= np.load('bottleneck_features_labeled_withreg.npy')
-
-
-else:
-    print('computing bottleneck_features...')
-    bottleneck_features_labeled,file_names= features_from_names(listaT1_labeled,listaFLAIR_labeled,fun)
-    bottleneck_features_unlabeled,file_names= features_from_names(listaT1[unlabeled_indxs],listaFLAIR[unlabeled_indxs],fun,listaMASK[unlabeled_indxs])
-    #np.save('bottleneck_features_unlabeled_withreg.npy',bottleneck_features_unlabeled)
-    #np.save('bottleneck_features_labeled_withreg.npy',bottleneck_features_labeled)
-
-
-labeled_tsne,unlabeled_tsne= tsne(bottleneck_features_labeled, bottleneck_features_unlabeled,n_components=3)
-classes_u,classes_l= get_clusters_dbscan(unlabeled_tsne,labeled_tsne)
-neibhors_and_dis=get_neibhors_and_dis(unlabeled_tsne,classes_u)
-print(neibhors_and_dis)
-ropes=get_ropes(neibhors_and_dis)
-print(ropes)
-ropes_list=get_list_from_ropes(ropes)
-clusters,bundles=get_clusters_with_labels(classes_u, ropes_list)
-np.save('dbscan_clusters',clusters)
-np.save('dbscan_bundles',bundles)
-"""
-bundles=np.load('dbscan_bundles.npy')
-clusters=np.load('dbscan_clusters.npy')
-"""
 
 if(resume):
-    step=0
-    while(step<resume_after_adding_pseudo_of_step-1):
-        new_pos_in_features = bundles[step].tolist()
-        print('adding cluster: '+str(clusters[step]))
-        step=step+1
-        print('step: '+str(step))
-        print('loading new data...')
-
-        print(new_pos_in_features)
-        not_new_pos_in_features = [x for x in range(unlabeled_num) if x not in new_pos_in_features]
-        pseudolabeled_indxs= pseudolabeled_indxs+ new_pos_in_features
-        unlabeled_indxs =  [x for x in unlabeled_indxs if x not in pseudolabeled_indxs]
-        #update num
-        unlabeled_num=len(unlabeled_indxs)
-
-#labeld_to_data(x_train,y_train,datafolder=datafolder)
-
-#Training
-while(unlabeled_num>increment_new_data):
+    step=resume_after_adding_pseudo_of_step-1
     if(not step==0):
-        if(regularized):
-            model = modelos.load_UNET3D_bottleneck_regularized(ps[0],ps[1],ps[2],2,2,20,0.5,groups=4)
-            model.compile(optimizer=optimizers.Adam(0.0001), loss=[losses.GJLsmooth,losses.BottleneckRegularized],loss_weights=loss_weights)
-            fun = K.function([model.input, K.learning_phase()],[model.output[0]])
-        else:
-            model=modelos.load_UNET3D_SLANT27_v2_groupNorm(96,96,96,2,2,24,0.5)
-            model.load_weights(filepath)
-            model.compile(optimizer=optimizers.Adam(0.0001), loss=losses.GJLsmooth, metrics=[metrics.mdice])
-            #savemodel=ModelCheckpoint('curruc.h5', monitor='val_mdice', verbose=1, save_best_only=True, save_weights_only=False, mode='max', period=1)
-            fun = get_bottleneck_features_func(model)
         model.load_weights(out_filepath(step))
 
+update_data_folder(model,unlabeled_indxs,listaT1,listaFLAIR,listaMASK,datafolder=datafolder,regularized=regularized)
 
-    new_pos_in_features = bundles[step].tolist()
-    print('adding cluster: '+str(clusters[step]))
+train_files_bytiles=[]
+for i in range(27):
+    train_files_bytiles.append(keyword_toList(datafolder,"tile_"+str(i)+".npy") )
+#Training
+numb_data=21*30
+for i in range(29):
+    numb_data=numb_data+100*5
     step=step+1
     print('step: '+str(step))
     print('loading new data...')
-
-    print(new_pos_in_features)
-    not_new_pos_in_features = [x for x in range(unlabeled_num) if x not in new_pos_in_features]
-    pseudolabeled_indxs= pseudolabeled_indxs+ new_pos_in_features
-    unlabeled_indxs =  [x for x in unlabeled_indxs if x not in pseudolabeled_indxs]
-    #update num
-    unlabeled_num=len(unlabeled_indxs)
-    if(not (resume and step==resume_after_adding_pseudo_of_step)):
-        update_data_folder(model,new_pos_in_features,listaT1,listaFLAIR,listaMASK,datafolder=datafolder,regularized=True)
-
-    train_files_bytiles=[]
-    for i in range(27):
-        train_files_bytiles.append(keyword_toList(datafolder,"tile_"+str(i)+".npy") )
+    if( resume and step==resume_after_adding_pseudo_of_step):
+        print('resuming..')
 
 
     print('training with new data...')
@@ -202,16 +150,14 @@ while(unlabeled_num>increment_new_data):
                     validation_data=(x_val, y_val),
                     callbacks=[savemodel])
     else:
-        numb_data= len(sorted(glob.glob(datafolder+"x*.npy")))
+        #numb_data= len(sorted(glob.glob(datafolder+"x*.npy")))
         if(regularized):
             result=model.fit_generator(data_gen_iqda_2it(datafolder,train_files_bytiles,sim='output_diff'), #loss1->sim='DICE' loss3->sim='output_diff' loss4->sim='input_diff'
                 steps_per_epoch=numb_data,
                 epochs=Epoch_per_step)
         else:
-            result=model.fit_generator(data_gen_iqda(datafolder),#data_gen(), data_gen_iqda
+            result=model.fit_generator(data_gen_iqda(datafolder=datafolder),#data_gen(), data_gen_iqda
                 steps_per_epoch=numb_data,
                 epochs=Epoch_per_step)
 
     model.save_weights(out_filepath(step))
-    K.clear_session()
-    gc.collect() #free memory
