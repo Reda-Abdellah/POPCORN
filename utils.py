@@ -16,14 +16,117 @@ from scipy.stats import pearsonr
 from keras import backend as K
 import time,umap
 import matplotlib
-import Data_fast, data_augmentation
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import patch_extraction
 from sklearn.decomposition import PCA
-import data_augmentation
 from sklearn.cluster import KMeans,DBSCAN
 
+class CustomModelCheckpoint(ModelCheckpoint):
+    def __init__(self,filepath,validation_data=(), monitor='val_loss', verbose=0,
+                 save_best_only=False, save_weights_only=False,
+                 mode='auto', period=1):
+        #super(ModelCheckpoint, self).__init__()
+        self.monitor = monitor
+        self.verbose = verbose
+        self.filepath = filepath
+        self.save_best_only = save_best_only
+        self.save_weights_only = save_weights_only
+        self.period = period
+        self.epochs_since_last_save = 0
+        super(CustomModelCheckpoint, self).__init__(filepath,monitor=monitor, verbose=verbose,
+                     save_best_only=save_best_only, save_weights_only=save_weights_only,
+                     mode=mode, period=period)
+        self.X_val, self.y_val = validation_data
+        self.y_val =np.argmax(self.y_val, axis=-1)
+    def pred_val_score(self):
+        y_pred = self.model.predict(self.X_val, batch_size=1,verbose=0)
+        y_pred = np.argmax(y_pred, axis=-1)
+        return score_batch( y_pred,self.y_val)
+
+    def on_epoch_end(self, epoch, logs=None):
+        logs = logs or {}
+        self.epochs_since_last_save += 1
+        if self.epochs_since_last_save >= self.period:
+            self.epochs_since_last_save = 0
+            filepath = self.filepath.format(epoch=epoch + 1, **logs)
+            if self.save_best_only:
+
+                current =self.pred_val_score()
+                print('score of validation:'+str(current))
+                if current is None:
+                    warnings.warn('Can save best model only with %s available, '
+                                  'skipping.' % (self.monitor), RuntimeWarning)
+                else:
+                    if self.monitor_op(current, self.best):
+                        if self.verbose > 0:
+                            print('\nEpoch %05d: %s improved from %0.5f to %0.5f,'
+                                  ' saving model to %s'
+                                  % (epoch + 1, self.monitor, self.best,
+                                     current, filepath))
+                        self.best = current
+                        if self.save_weights_only:
+                            self.model.save_weights(filepath, overwrite=True)
+                        else:
+                            self.model.save(filepath, overwrite=True)
+                    else:
+                        if self.verbose > 0:
+                            print('\nEpoch %05d: %s did not improve from %0.5f' %
+                                  (epoch + 1, self.monitor, self.best))
+            else:
+                if self.verbose > 0:
+                    print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
+                if self.save_weights_only:
+                    self.model.save_weights(filepath, overwrite=True)
+                else:
+                    self.model.save(filepath, overwrite=True)
+
+def seg_metrics(seg_vol, truth_vol, output_errors=False):
+    time_start = time.time()
+    seg_total = np.sum(seg_vol)
+    truth_total = np.sum(truth_vol)
+    tp = np.sum(seg_vol[truth_vol == 1])
+    dice = 2 * tp / (seg_total + truth_total)
+    ppv = tp / (seg_total + 0.001)
+    tpr = tp / (truth_total + 0.001)
+    vd = abs(seg_total - truth_total) / truth_total
+
+    # calculate LFPR
+    seg_labels, seg_num = measure.label(seg_vol, return_num=True, connectivity=2)
+    lfp_cnt = 0
+    tmp_cnt = 0
+    for label in range(1, seg_num + 1):
+        tmp_cnt += np.sum(seg_vol[seg_labels == label])
+        if np.sum(truth_vol[seg_labels == label]) == 0:
+            lfp_cnt += 1
+    lfpr = lfp_cnt / (seg_num + 0.001)
+
+    # calculate LTPR
+    truth_labels, truth_num = measure.label(truth_vol, return_num=True, connectivity=2)
+    ltp_cnt = 0
+    for label in range(1, truth_num + 1):
+        if np.sum(seg_vol[truth_labels == label]) > 0:
+            ltp_cnt += 1
+    ltpr = ltp_cnt / truth_num
+
+    # calculate Pearson's correlation coefficient
+    corr = pearsonr(seg_vol.flatten(), truth_vol.flatten())[0]
+    # print("Timed used calculating metrics: ", time.time() - time_start)
+
+    return OrderedDict([('dice', dice), ('ppv', ppv), ('tpr', tpr), ('lfpr', lfpr),
+                        ('ltpr', ltpr), ('vd', vd), ('corr', corr)])
+
+def mdice(y_pred, y_true):
+		acu=0
+		size=y_true.get_shape().as_list()
+		epsilon=0.00000000001
+		for i in range(0,size[4]):
+			a=y_true[:,:,:,:,i]
+			b=y_pred[:,:,:,:,i]
+			y_int = a[:]*b[:]
+			acu=acu+(2*K.sum(y_int[:]) / (K.sum(a[:]) + K.sum(b[:]) + epsilon) )
+		acu=acu/(size[4])
+		return acu
 
 def get_list_from_ropes(ropes):
     out=[]
@@ -186,7 +289,6 @@ def  get_x(list_np):
     for i in range(1,len(list_np)):
         out=np.concatenate((out,list_np[i]),axis=0)
     return out
-
 
 def reducer_umap(x):
     start = time.time()
@@ -434,13 +536,13 @@ def give_n_closest(ranks,n_indxs=100):
 def give_dist_for_Kclosest(ranks,n_indxs=100,k=50):
     indxs=[]
     querries_num=ranks.shape[1]
-    argpartition=np.argpartition(ranks, k, axis=1)[:,:k]
+    argsort=np.argsort(ranks, axis=1)[:,:k]
     Kclosest=np.zeros(ranks.shape)
     for i in range(ranks.shape[0]):
-        Kclosest[i,argpartition[i,:]]=1
+        Kclosest[i,argsort[i,:]]=1
     values_for_distance= Kclosest*ranks
     distance= np.sum(values_for_distance,axis=1)
-    indxs=np.argpartition(distance, n_indxs)[:n_indxs]
+    indxs=np.argsort(distance)[:n_indxs]
     ranks[indxs,:]=9999999
     return indxs.tolist()
 
@@ -501,7 +603,6 @@ def brute_force_rank(X, Q):
             res_dis[j,i]=distance_measure(X[j],Q[i])
     return res_dis
 
-
 def load_isbi(one_out):
     Rootpath=os.getcwd()
     # number of networks per dimension
@@ -552,7 +653,6 @@ def load_isbi(one_out):
     y_train=y_train[train_index[0:-index_image]]
 
     return x_train,y_train,x_val,y_val
-
 
 def data_gen_iqda_2it(datafolder,train_files_bytiles,same_ratio=0.8,sim='DICE'):
     while(1):
@@ -629,6 +729,105 @@ def data_gen_iqda_2it(datafolder,train_files_bytiles,same_ratio=0.8,sim='DICE'):
             #yield x_,[y_,inter_sim]
             yield x_,[y_,np.array([inter_sim,inter_sim])]
 
+def data_gen_dual_task_reconstruct_seg(datafolder,datafolder_ssl):
+    while(1):
+        list_x=sorted(glob.glob(datafolder+"x*.npy"))
+        list_x_ssl=sorted(glob.glob(datafolder_ssl+"x*.npy"))
+        list_y=sorted(glob.glob(datafolder+"y*.npy"))
+        random_idxs1= np.arange(len(list_x))
+        random_idxs2= np.arange(len(list_x_ssl))
+        np.random.shuffle(random_idxs1)
+        np.random.shuffle(random_idxs2)
+        for i in range(len(list_x)):
+            x_1=np.load(list_x[random_idxs1[i]])
+            y_1=np.load(list_y[random_idxs1[i]])
+            x_2=np.load(list_x_ssl[random_idxs2[i]])
+            x_1=IQDA(x_1)
+            x_2=IQDA(x_2)
+            x_1,y_1=random_rot(x_1,y_1)
+            x_2=batch_rot90(x_2)
+            y_2=np.concatenate((x_2,x_2),axis=4)
+            x_=np.concatenate((x_1,x_2),axis=0)
+            y_=np.concatenate((y_1,y_2),axis=0)
+            #print(y_.shape)
+            #print(x_.shape)
+            yield x_,y_
+
+def data_gen_consistency_reg(datafolder,datafolder_ssl):
+    while(1):
+        list_x=sorted(glob.glob(datafolder+"x*.npy"))
+        list_x_ssl=sorted(glob.glob(datafolder_ssl+"x*.npy"))
+        list_y=sorted(glob.glob(datafolder+"y*.npy"))
+        random_idxs1= np.arange(len(list_x))
+        random_idxs2= np.arange(len(list_x_ssl))
+        np.random.shuffle(random_idxs1)
+        np.random.shuffle(random_idxs2)
+        for i in range(len(list_x)):
+            x_1=np.load(list_x[random_idxs1[i]])
+            y_1=np.load(list_y[random_idxs1[i]])
+            x_2=np.load(list_x_ssl[random_idxs2[i]])
+            x_3=np.copy(x_2)
+            x_1=IQDA(x_1)
+            x_2=IQDA(x_2)
+            x_3=IQDA(x_3)
+            x_1,y_1=random_rot(x_1,y_1)
+            x_3,x_2=random_rot(x_3,x_2)
+            y_2=np.copy(y_1)
+            y_3=np.copy(y_1)
+            #"""
+            #op1=np.random.choice(4,1)
+            op2=np.random.choice(4,1)
+            op1=0
+            #op3=np.random.choice(4,1)
+            op4=np.random.choice(4,1)
+            op3=0
+            x_2=batch_rot90_with_choice(x_2,op1,op2)
+            x_3=batch_rot90_with_choice(x_3,op3,op4)
+            y_2[...,0]=op1
+            y_2[...,1]=op2
+            y_3[...,0]=op3
+            y_3[...,1]=op4
+            #"""
+            x_=np.concatenate((x_1,x_2,x_3),axis=0)
+            y_=np.concatenate((y_1,y_2,y_3),axis=0)
+            #print(y_[1,0,0,0,0])
+            #print(y_[1,0,0,0,1])
+            #print(y_[2,0,0,0,0])
+            #print(y_[2,0,0,0,1])
+            yield x_,y_
+
+def data_gen_uncertainty_pseudolab(datafolder,datafolder_ssl):
+    while(1):
+        list_x=sorted(glob.glob(datafolder+"x*.npy"))
+        list_x_ssl=sorted(glob.glob(datafolder_ssl+"x*.npy"))
+        list_y_ssl=sorted(glob.glob(datafolder_ssl+"soft*.npy"))
+        list_entropy_ssl=sorted(glob.glob(datafolder_ssl+"entropy*.npy"))
+        list_y=sorted(glob.glob(datafolder+"y*.npy"))
+        random_idxs1= np.arange(len(list_x))
+        random_idxs2= np.arange(len(list_x_ssl))
+        np.random.shuffle(random_idxs1)
+        np.random.shuffle(random_idxs2)
+        for i in range(len(list_x)):
+            x_1=np.load(list_x[random_idxs1[i]])
+            y_1=np.load(list_y[random_idxs1[i]])
+            x_2=np.load(list_x_ssl[random_idxs2[i]])
+            y_2=np.load(list_y_ssl[random_idxs2[i]])
+            entropy_2=np.load(list_entropy_ssl[random_idxs2[i]])
+            x_1=IQDA(x_1)
+            x_2=IQDA(x_2)
+            x_1,y_1=random_rot(x_1,y_1)
+            #entropy_2= np.exp(-1.5*entropy_2)
+            entropy_2= np.exp(-3.5*entropy_2)
+            #print(entropy_2.max())
+            #print(entropy_2.min())
+            #y_2=np.concatenate((y_2,entropy_2),axis=4)
+            y_2[...,0:1]=entropy_2
+            x_2,y_2=random_rot(x_2,y_2)
+            x_=np.concatenate((x_1,x_2),axis=0)
+            y_=np.concatenate((y_1,y_2),axis=0)
+            #print(y_.shape)
+            #print(x_.shape)
+            yield x_,y_
 
 def update_with_new_pseudo(model,x_train,y_train,new_pseudo,listaT1,listaFLAIR,listaMASK=None):
     first=True
@@ -683,6 +882,48 @@ def IQDA(x_):
 				x_[i,:,:,:,j] =ndimage.uniform_filter(x_[i,:,:,:,j], (1,1,2))
 		return x_
 
+def random_rot(x,y):
+    op=np.random.choice(10,1)
+    if(op==1):
+        x=np.rot90(x,k=2,axes=(1,3))
+        y=np.rot90(y,k=2,axes=(1,3))
+    elif(op==9):
+        x=np.rot90(x,k=1,axes=(1,3))
+        y=np.rot90(y,k=1,axes=(1,3))
+    elif(op==2):
+        x=np.rot90(x,k=3,axes=(1,3))
+        y=np.rot90(y,k=3,axes=(1,3))
+    elif(op==3):
+        x=np.rot90(x,k=2,axes=(2,3))
+        y=np.rot90(y,k=2,axes=(2,3))
+    elif(op==4):
+        x=np.rot90(x,k=1,axes=(2,3))
+        y=np.rot90(y,k=1,axes=(2,3))
+    elif(op==5):
+        x=np.rot90(x,k=3,axes=(2,3))
+        y=np.rot90(y,k=3,axes=(2,3))
+    elif(op==6):
+        x=np.rot90(x,k=2,axes=(1,2))
+        y=np.rot90(y,k=2,axes=(1,2))
+    elif(op==7):
+        x=np.rot90(x,k=1,axes=(1,2))
+        y=np.rot90(y,k=1,axes=(1,2))
+    elif(op==8):
+        x=np.rot90(x,k=3,axes=(1,2))
+        y=np.rot90(y,k=3,axes=(1,2))
+
+    op=np.random.choice(4,1)
+    if(op==1):
+        x=x[:,-1::-1,:,:]
+        y=y[:,-1::-1,:,:]
+    elif(op==2):
+        x=x[:,:,:,-1::-1]
+        y=y[:,:,:,-1::-1]
+    elif(op==3):
+        x=x[:,:,-1::-1,:]
+        y=y[:,:,-1::-1,:]
+    return x,y
+
 def batch_rot90(lesion_batch):
     for i in range(lesion_batch.shape[0]):
         a=lesion_batch[i]
@@ -691,7 +932,6 @@ def batch_rot90(lesion_batch):
             a=np.rot90(a,k=2,axes=(1,0))
         elif(op==9):
             a=np.rot90(a,k=1,axes=(1,0))
-
         elif(op==2):
             a=np.rot90(a,k=3,axes=(1,0))
         elif(op==3):
@@ -717,6 +957,24 @@ def batch_rot90(lesion_batch):
         lesion_batch[i]=a
     return lesion_batch
 
+def batch_rot90_with_choice(lesion_batch, op, op2):
+    for i in range(lesion_batch.shape[0]):
+        a=lesion_batch[i]
+        if(op==1):
+            a=np.rot90(a,k=2,axes=(0,1))
+        elif(op==3):
+            a=np.rot90(a,k=1,axes=(0,1))
+        elif(op==2):
+            a=np.rot90(a,k=3,axes=(0,1))
+        if(op2==1):
+            a=a[-1::-1,:,:]
+        elif(op2==2):
+            a=a[:,:,-1::-1]
+        elif(op2==3):
+            a=a[:,-1::-1,:]
+        lesion_batch[i]=a
+    return lesion_batch
+
 
 def data_gen_iqda(datafolder='data/'):
     while(1):
@@ -730,9 +988,12 @@ def data_gen_iqda(datafolder='data/'):
             x_=IQDA(x_)
             x_train_=np.concatenate((x_,y_),axis=4)
             x_train_=batch_rot90(x_train_)
-            y_=x_train_[:,:,:,:,2:4]
-            x_=x_train_[:,:,:,:,0:2]
+            size_in_x1=x_.shape[4]
+            size_in_y1=size_in_x1+y_.shape[4]
+            x_=x_train_[:,:,:,:,0:size_in_x1]
+            y_=x_train_[:,:,:,:,size_in_x1:size_in_y1]
             yield x_,y_
+
 
 def data_gen_rot90(datafolder='data/'):
     while(1):
@@ -1073,6 +1334,74 @@ def seg_majvote_flair(FLAIR,model,nbNN=[5,5,5],ps=[96,96,96],regularized=False):
                 lista=np.array([0,1])
                 if(regularized):
                     patches = model.predict(T)[0]
+                else:
+                    patches = model.predict(T)
+
+
+
+                xx = x+patches.shape[1]
+                if xx> output.shape[0]:
+                    xx = output.shape[0]
+
+                yy = y+patches.shape[2]
+                if yy> output.shape[1]:
+                    yy = output.shape[1]
+
+                zz = z+patches.shape[3]
+                if zz> output.shape[2]:
+                    zz = output.shape[2]
+
+                #store result
+                local_patch = np.reshape(patches,(patches.shape[1],patches.shape[2],patches.shape[3],patches.shape[4]))
+
+                output[x:xx,y:yy,z:zz,:]=output[x:xx,y:yy,z:zz,:]+local_patch[0:xx-x,0:yy-y,0:zz-z]
+                acu[x:xx,y:yy,z:zz]=acu[x:xx,y:yy,z:zz]+1#pesos
+
+                ii=ii+1
+
+    ind=np.where(acu==0)
+    mask_ind = np.where(acu>0)
+    acu[ind]=1
+
+    SEG= np.argmax(output, axis=3)
+    SEG= np.reshape(SEG, SEG.shape[0:3])
+    SEG_mask = SEG*MASK
+
+
+    return SEG_mask
+
+def seg_majvote_flair_ssl(FLAIR,model,nbNN=[5,5,5],ps=[96,96,96],regularized=False):
+    MASK = (1-(FLAIR==0).astype('int'))
+    ind=np.where(MASK>0)
+    indbg=np.where(MASK==0)
+    crop_bg = 4
+    overlap1 = np.floor((nbNN[0]*ps[0] - (FLAIR.shape[0]-2*crop_bg)) / (nbNN[0]-1))
+    offset1 = ps[0] - overlap1.astype('int')
+    overlap2 = np.floor((nbNN[1]*ps[1] - (FLAIR.shape[1]-2*crop_bg)) / (nbNN[1]-1))
+    offset2 = ps[1] - overlap2.astype('int')
+    overlap3 = np.floor((nbNN[2]*ps[2] - (FLAIR.shape[2]-2*crop_bg)) / (nbNN[2]-1))
+    offset3 = ps[2]- overlap3.astype('int')
+
+    pFLAIR=patch_extraction.patch_extract_3D_v2(FLAIR,(ps[0],ps[1],ps[2]),nbNN,offset1,offset2,offset3,crop_bg)
+    pFLAIR= pFLAIR.astype('float32')
+
+    out_shape=(FLAIR.shape[0],FLAIR.shape[1],FLAIR.shape[2],2)
+    output=np.zeros(out_shape,FLAIR.dtype)
+    acu=np.zeros(out_shape[0:3],FLAIR.dtype)
+
+    ii=0 # Network ID
+
+    for x in range(crop_bg,(nbNN[0]-1)*offset1+crop_bg+1,offset1):
+        for y in range(crop_bg,(nbNN[1]-1)*offset2+crop_bg+1,offset2):
+            for z in range(0,(nbNN[2]-1)*offset3+1,offset3):
+
+                T = np.reshape(pFLAIR[ii], (1,pFLAIR.shape[1],pFLAIR.shape[2],pFLAIR.shape[3], 1))
+
+
+
+                lista=np.array([0,1])
+                if(regularized):
+                    patches = model.predict(T)[:,:,:,:,0:2]
                 else:
                     patches = model.predict(T)
 

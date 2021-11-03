@@ -38,7 +38,6 @@ def BottleneckRegularized(y_true, y_pred):
     #loss4= latent_distance* K.exp(-input_distance)
     return loss3
 
-
 def newGDL(y_true, y_pred):
     acu=0
     W=[]
@@ -79,13 +78,11 @@ def newGJL(y_true, y_pred):
         acu=acu+W[i]*(K.sum(y_int[:])+eps) / (K.sum(a[:]) + K.sum(b[:])+eps- y_int[:])
     return 1-acu
 
-
 def JaccardLoss(y_true, y_pred):
     a=y_true
     b=y_pred
     y_int = a*b
     return 1-(K.sum(y_int[:])) / (K.sum(a[:]) + K.sum(b[:])+1- y_int[:])
-
 
 def norm_mse(y_true,ypred):
     tot=K.sum(y_true)
@@ -156,13 +153,11 @@ def smooth_roud(x):
     x=x-0.5
     return 1 / (1 + tf.exp(-x*100))
 
-
 def dice_coefficient(y_true, y_pred, smooth=1.):
     y_true_f = K.flatten(y_true)
     y_pred_f = K.flatten(y_pred)
     intersection = K.sum(y_true_f * y_pred_f)
     return (2. * intersection + smooth) / (K.sum(y_true_f) + K.sum(y_pred_f) + smooth)
-
 
 def dice_coefficient_loss(y_true, y_pred):
     return -dice_coefficient(y_true, y_pred)
@@ -189,22 +184,89 @@ def weighted_binary_crossentropy(w1, w2):
 
 #"""
 
+def recon_ssl(y_true, y_pred):
+    #alpha=0.1
+    alpha=1
+    #print(y_true.shape)
+    #print(y_pred.shape)
+    seg_loss= mdice_loss2(y_pred[0:1,:,:,:,0:2], y_true[0:1,:,:,:,0:2])
+    recon_loss= keras.losses.mean_squared_error(y_pred[1:2,:,:,:,0:2]*y_true[1:2,:,:,:,:], y_pred[1:2,:,:,:,2:4])
+    return seg_loss+ alpha * recon_loss
+
+def batch_rot90_reverse(a, op, op2):
+    lesion_batch=a[:,:,:,:]
+    lesion_batch=  tf.cond(tf.equal(op2 , tf.constant(1,dtype=tf.float32)), lambda: lesion_batch[:,-1::-1,:,:] , lambda: lesion_batch)
+    lesion_batch=  tf.cond(tf.equal(op2 , tf.constant(2,dtype=tf.float32)), lambda: lesion_batch[:,:,:,-1::-1] , lambda: lesion_batch)
+    lesion_batch=  tf.cond(tf.equal(op2 ,tf.constant( 3,dtype=tf.float32)), lambda: lesion_batch[:,:,-1::-1,:] , lambda: lesion_batch)
+    lesion_batch=  tf.cond(tf.equal(op  ,tf.constant(1,dtype=tf.float32)), lambda: tf.image.rot90(lesion_batch,k=2) , lambda: lesion_batch)
+    lesion_batch=  tf.cond(tf.equal(op ,tf.constant( 2,dtype=tf.float32)), lambda: tf.image.rot90(lesion_batch,k=1) , lambda: lesion_batch)
+    lesion_batch=  tf.cond(tf.equal(op ,tf.constant( 3,dtype=tf.float32)), lambda: tf.image.rot90(lesion_batch,k=3) , lambda: lesion_batch)
+    return lesion_batch
+
+#tf.enable_eager_execution()
+def consistency_reg(y_true, y_pred):
+    alpha=0.1
+    seg_loss= mdice_loss(y_pred[0:1], y_true[0:1])
+
+    op1=y_true[1,0,0,0,0]
+    op2=y_true[1,0,0,0,1]
+    op3=y_true[2,0,0,0,0]
+    op4=y_true[2,0,0,0,1]
+    #print('running')
+    loss1=mdice_loss3(batch_rot90_reverse( y_pred[1:2,:,:,:,0], op1, op2 ) , batch_rot90_reverse( y_pred[2:3,:,:,:,0], op3, op4 ) )
+    loss2=mdice_loss3(batch_rot90_reverse( y_pred[1:2,:,:,:,1], op1, op2 ) , batch_rot90_reverse( y_pred[2:3,:,:,:,1], op3, op4 ) )
+    return seg_loss+alpha*(loss1+loss2)
+    """
+    consitency_loss= mdice_loss(y_pred[1:2], y_pred[2:3])
+    return seg_loss+alpha*consitency_loss
+    """
+
+
+
+def uncertainty_pseudo_lab(y_true, y_pred):
+    seg_loss= mdice_loss(y_pred[0:1], y_true[0:1])
+    weigh_map= y_true[1:2,:,:,:,0:1]
+    pseudo_loss1= mdice_loss1(weigh_map * y_true[1:2,:,:,:,1:2], weigh_map * y_pred[1:2,:,:,:,1:2])
+    pseudo_loss2= mdice_loss1(weigh_map * (1-y_true[1:2,:,:,:,1:2]), weigh_map * y_pred[1:2,:,:,:,0:1])
+    return K.mean(weigh_map)*((pseudo_loss1+pseudo_loss2)/2)+seg_loss
+
+def mdice_loss2(y_pred, y_true):
+    a1=y_true[:,:,:,:,0]
+    b1=y_pred[:,:,:,:,0]
+    y_int1 = a1[:]*b1[:]
+    a2=y_true[:,:,:,:,1]
+    b2=y_pred[:,:,:,:,1]
+    y_int2 = a2[:]*b2[:]
+    return 1-(((2*K.sum(y_int1[:]) / (K.sum(a1[:]) + K.sum(b1[:])+ 1)) + (2*K.sum(y_int2[:]) / (K.sum(a2[:]) + K.sum(b2[:])+ 1)))/2)
+
+def mdice_loss1(y_pred, y_true):
+    a1=y_true[:,:,:,:,0]
+    b1=y_pred[:,:,:,:,0]
+    y_int1 = a1[:]*b1[:]
+
+    return 1-(2*K.sum(y_int1[:]) / (K.sum(a1[:]) + K.sum(b1[:])+ 1))
+
+def mdice_loss3(y_pred, y_true):
+    a1=y_true[:,:,:,:]
+    b1=y_pred[:,:,:,:]
+    y_int1 = a1[:]*b1[:]
+    return 1-(2*K.sum(y_int1[:]) / (K.sum(a1[:]) + K.sum(b1[:])+ 1))
+
 def mdice_loss(y_pred, y_true):
     acu=0
-    size=y_true.get_shape().as_list()
-    epsilon=0.00000000001
-    for i in range(0,size[4]):
+    #size=y_true.get_shape().as_list()[4]
+    size=2
+    epsilon=1
+    for i in range(0,size):
         a=y_true[:,:,:,:,i]
         b=y_pred[:,:,:,:,i]
         y_int = a[:]*b[:]
         acu=acu+(2*K.sum(y_int[:]) / (K.sum(a[:]) + K.sum(b[:])+ epsilon))
-    acu=acu/(size[4])
+    acu=acu/(size)
     return 1-acu
 
 def log_mdice_loss(y_pred, y_true):
     return K.log(mdice_loss(y_pred, y_true)+0.00000001)
-
-
 
 def approx_round_grad(x, steepness=1):
     remainder = tf.mod(x, 1)
