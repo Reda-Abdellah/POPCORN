@@ -2,7 +2,6 @@ from sklearn.datasets import load_digits
 import os, glob, random, math, operator, umap
 import numpy as np
 import nibabel as nii
-#import patch_extraction
 from scipy.ndimage.interpolation import zoom
 from keras.models import load_model
 from scipy import ndimage
