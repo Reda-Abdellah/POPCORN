@@ -1,35 +1,34 @@
 import os, glob, sys
 import numpy as np
 import nibabel as nii
+from keras.models import load_model
 import modelos
 from utils import *
+from keras import optimizers
+from keras.callbacks import ModelCheckpoint, EarlyStopping
 import losses
-import torch
-from helper import *
-import torch.optim as optim
+from keras import backend as K
 
-def worker_init_fn(worker_id):
-	np.random.seed(np.random.get_state()[1][0] + worker_id)
-
-def POPCORN( ps=[64,64,64], dataset_path="/lib/", Epoch_per_step=2, increment_new_data=200, datafolder='data_nearest/',dataselection_strategy='nearest',modality="FLAIR",
+#original version tensorflow
+def POPCORN_tensorflow( ps=[64,64,64], dataset_path="/lib/", Epoch_per_step=2, increment_new_data=200, datafolder='data_nearest/',dataselection_strategy='nearest',
                 resume=False, resume_after_adding_pseudo_of_step=1, load_precomputed_features=False, unlabeled_dataset="volbrain",recompute_distance_each_step=True,
                   regularized=True, loss_weights=[1,0.01], k=5):
 
     
     if(regularized):
+        model = modelos.load_UNET3D_bottleneck_regularized(ps[0],ps[1],ps[2],1,2,24,0.5,groups=8)
+        model.compile(optimizer=optimizers.Adam(0.0001), loss=[losses.mdice_loss,losses.BottleneckRegularized],loss_weights=loss_weights)
+        fun = K.function([model.input, K.learning_phase()],[model.output[0]])
         in_filepath='weights/SUPERVISED_regularized.h5'
     else:
+        model=modelos.load_UNET3D_SLANT27_v2_groupNorm(ps[0],ps[1],ps[2],1,2,24,0.5)
+        model.compile(optimizer=optimizers.Adam(0.0001), loss=losses.mdice_loss, metrics=[utils.mdice])
+        fun = get_bottleneck_features_func(model)
         in_filepath='weights/SUPERVISED_noreg.h5'
-    
-    model=torch.load(in_filepath)
-    
+
     if(unlabeled_dataset=="volbrain"):
         listaFLAIR = sorted(glob.glob(dataset_path+"/volbrain_qc/n_mfmni*flair*.nii*"))
         listaMASK = sorted(glob.glob(dataset_path+"/volbrain_qc/mask*.nii*"))
-        listaMASK = np.array(listaMASK)
-    elif(unlabeled_dataset=="OFSEP_and_volbrain"):
-        listaFLAIR = sorted(glob.glob(dataset_path+"/volbrain_qc/n_mfmni*flair*.nii*"))+sorted(glob.glob(dataset_path+"/OFSEP/data/n_mfmni*flair*.nii*"))
-        listaMASK = sorted(glob.glob(dataset_path+"/volbrain_qc/mask*.nii*"))+sorted(glob.glob(dataset_path+"/OFSEP/data/mask*.nii*"))
         listaMASK = np.array(listaMASK)
     elif(unlabeled_dataset=="isbi_test"):
         listaFLAIR = sorted(glob.glob(dataset_path+"/ISBI_preprocess/test*flair*.nii*"))
@@ -147,89 +146,83 @@ def POPCORN( ps=[64,64,64], dataset_path="/lib/", Epoch_per_step=2, increment_ne
         model.save_weights(out_filepath(step))
 
 
-def train_on_labeled_only(regularized=True,save=True,  loss_weights=[1,0.01],batch_size=1 ,early_stop_treshold=30, da_type="iqda_v2",modality='T1_FLAIR', nbNN=[5,5,5],ps=[64,64,64],Snapshot=True):
-    
+def train_on_labeled_only(regularized=True):
+    nbNN=[3,3,3]
+    ps=[64,64,64]
 
-    if(save):
-        datafolder='dataset/train/'
-        datafolder_val='dataset/val/'
-        Epoch=100
-        lib_path = os.path.join("..","all_ms_preprocessed")
-        
-        listaT1_1=keyword_toList(path=lib_path,keyword="mso*mprage.")
-        listaFLAIR_1=keyword_toList(path=lib_path,keyword="mso*flair")
-        listaT1_2=keyword_toList(path=lib_path,keyword="msseg*mprage.")
-        listaFLAIR_2=keyword_toList(path=lib_path,keyword="msseg*flair")
-        listaSEG_2=keyword_toList(path=lib_path,keyword="msseg*mask1")
-        listaSEG_1=keyword_toList(path=lib_path,keyword="mso_mask1")
-        listaT1_3=keyword_toList(path=lib_path,keyword="isbi*mprage_pp.")
-        listaFLAIR_3=keyword_toList(path=lib_path,keyword="isbi*flair")
-        listaSEG1_3=keyword_toList(path=lib_path,keyword="isbi*mask1")
-        listaSEG2_3=keyword_toList(path=lib_path,keyword="isbi*mask2")
 
-        update_labeled_folder(listaT1_2,listaFLAIR_2,listaSEG_2,listaMASK=None,datafolder=datafolder_val,nbNN=nbNN,ps=ps,numbernotnullpatch=10)
-        update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG1_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=15)
-        update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=15)
-        update_labeled_folder(listaT1_1,listaFLAIR_1,listaSEG_1,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=30)
+    datafolder='data64flair/'
+    datafolder_val='data64flair_val/'
+    Epoch=100
+    lib_path_1 = os.path.join("..","lib","MS_O")
+    lib_path_2 = os.path.join("..","lib","msseg")
+    lib_path_3 = os.path.join("..","lib","isbi_final_train_preprocessed")
+
+
+    listaT1_2=keyword_toList(path=lib_path_2,keyword="t1")
+    listaFLAIR_2=keyword_toList(path=lib_path_2,keyword="flair")
+    listaSEG_2=keyword_toList(path=lib_path_2,keyword="mask1")
+    listaT1_3=keyword_toList(path=lib_path_3,keyword="mprage")
+    listaFLAIR_3=keyword_toList(path=lib_path_3,keyword="flair")
+    listaSEG1_3=keyword_toList(path=lib_path_3,keyword="mask1")
+    listaSEG2_3=keyword_toList(path=lib_path_3,keyword="mask2")
+
+    update_labeled_folder(listaT1_2,listaFLAIR_2,listaSEG_2,listaMASK=None,datafolder=datafolder_val,nbNN=nbNN,ps=ps,numbernotnullpatch=10)
+    update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG1_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=15)
+    update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=15)
 
     t0=time.time()
 
 
     # load model (UNET3D)
-    drop=0.5
     nf = 24
-    if(modality=='T1_FLAIR'):
-        in_dim=2
-    else:
-        in_dim=1
-    model = modelos.unet_assemblynet(nf,2,drop,in_dim)
-    optimizer = optim.Adam(model.parameters(), lr=0.0001)
-    criterion= lambda x,y : losses.mdice_loss_pytorch(x,y)
+    nc = 2
+    ch = 1
+    drop=0.5
+
+    model=modelos.load_UNET3D_bottleneck_regularized(ps[0],ps[1],ps[2],ch,nc,nf,drop,groups=8)
+
+    model.compile(optimizer=optimizers.Adam(0.0001), loss=[losses.mdice_loss,losses.BottleneckRegularized],loss_weights=[1,0.01])
+    model.summary()
+    filepath="One_2mods_2it02same_loss3_1_001_64_flair_only_"+str(ps[0])+"_ISBI_gen_IQDA_.h5"
+    #model.load_weights(filepath)
+
+    savemodel=ModelCheckpoint(filepath, monitor='val_loss', verbose=1, save_best_only=True, save_weights_only=False, mode='min', period=1)
+    #savemodel_stop=EarlyStopping(monitor='val_mdice', patience=5, verbose=1, mode='max', baseline=None, restore_best_weights=False)
+
+    train_files_bytiles=[]
+    val_files_bytiles=[]
+    for i in range(27):
+        train_files_bytiles.append(keyword_toList(datafolder,"x*tile_"+str(i)+".npy") )
+        val_files_bytiles.append(keyword_toList(datafolder_val,"x*tile_"+str(i)+".npy"))
+
+    #test_inter_sim(train_files_bytiles)
+
+    numb_data= len(sorted(glob.glob(datafolder+"x*.npy")))
+    numb_data_val= len(sorted(glob.glob(datafolder_val+"x*.npy")))
 
     if(regularized):
-        filepath='weights/SUPERVISED_regularized.h5'
+
+        result=model.fit_generator(data_gen_iqda_2it(datafolder,train_files_bytiles,sim='segmentation_distance'),#data_gen(),
+                    steps_per_epoch=numb_data,
+                    validation_data=data_gen_iqda_2it(datafolder_val,val_files_bytiles,sim='segmentation_distance'),
+                    validation_steps=numb_data_val/27,callbacks=[savemodel],
+                    epochs=Epoch)
+
     else:
-        filepath='weights/SUPERVISED_noreg.h5'
-
-    
-
-    #numb_data= len(sorted(glob.glob(datafolder+"x*.npy")))
-    #numb_data_val= len(sorted(glob.glob(datafolder_val+"x*.npy")))
-
-    transform_list=[]
-
-    transform_list.append(ToTensor())
-
-
-    data_transform = transforms.Compose(transform_list)
-    dataset_train = TileDataset(datafolder,transform=data_transform,da=da_type)
-    dataset_val = TileDataset(datafolder_val,transform=data_transform,da=False)
-    dataset_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True, worker_init_fn=worker_init_fn)
-    dataset_loader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=False)
-
-    best_val_loss= train_model(model=model,optimizer=optimizer,criterion=criterion,Epoch=Epoch,regularized=True,  loss_weights=[1,0.01],
-            dataset_loader=dataset_loader,dataset_loader_val=dataset_loader_val,val_criterion=criterion,eval_strategy='classic',
-            out_PATH=filepath,early_stop=True,early_stop_treshold=early_stop_treshold)
-
-
-    if (Snapshot):
-        model= torch.load(filepath) # To get the best one
-        for j in range(0,early_stop_treshold):
-            print("Run=",j)
-            best_val_loss= train_model(model=model,optimizer=optimizer,criterion=criterion,Epoch=1,regularized=True,  loss_weights=[1,0.01],
-                        dataset_loader=dataset_loader,dataset_loader_val=dataset_loader_val,val_criterion=criterion,eval_strategy='classic',
-                        out_PATH=filepath, best_val_loss=best_val_loss)
-
-            #model ensemble regularization (snapshot)
-            if(j==0):
-                moving_average_model = copy.deepcopy(model)
-            else:
-                #changing_ratio=1/(j+1)
-                changing_ratio= 0.1
-                moving_average_weights(running_model=model,stable_model=moving_average_model,changing_ratio=changing_ratio )
-                moving_average_model = copy.deepcopy(model)
-
-
+        result=model.fit_generator(data_gen_iqda(datafolder=datafolder),
+                    steps_per_epoch=numb_data,
+                    validation_data=data_gen_iqda(datafolder=datafolder_val),
+                    validation_steps=numb_data_val/27,callbacks=[savemodel],
+                    epochs=Epoch)
                     
+    model.reset_states()
 
+    K.clear_session()
+    gc.collect() #free memory
+    os.chdir(Rootpath)
 
+    t1=time.time()
+    print("Processing time=",t1-t0)
+    trainingTime = np.array([t1-t0])
+    np.savetxt('Training_time_1mm.txt', trainingTime, fmt="%5.2f")

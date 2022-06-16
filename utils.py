@@ -1178,7 +1178,25 @@ def notNull_patches_andLAB(T1,FLAIR,LAB,nbNN=[3,3,3],number=10):
     y_in= patches(1-LAB,LAB,nbNN=nbNN).astype('int')
     sum_y_in=y_in[:,:,:,:,1].sum(axis=(1,2,3))
     #print(x_in.shape[0])
-    random_idxs= np.arange(x_in.shape[0])
+    #random_idxs= np.arange(x_in.shape[0])
+
+    ###remove border tiles###
+    a=np.zeros((nbNN[0],nbNN[1],nbNN[2]))
+
+    for x in range(nbNN[0]):
+        for y in range(nbNN[1]):
+            for z in range(nbNN[2]):
+                a[x,y,z]= n
+                n=n+1
+
+    random_idxs= []
+    for stepx in range(1,nbNN[0]-1):
+        for stepy in range(1,nbNN[1]-1):
+            for stepz in range(1,nbNN[2]-1):
+                tile_num= str(int(a[stepx,stepy,stepz]))
+                random_idxs.append(tile_num)
+    
+    random_idxs= np.array(random_idxs)
     np.random.shuffle(random_idxs)
     num=0
     x=x_in[random_idxs[0:1]]

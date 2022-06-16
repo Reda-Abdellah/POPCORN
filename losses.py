@@ -1,14 +1,3 @@
-#################################################################
-#
-# AssemblyNET: Deep learning for Brain segmentation
-#
-# Authors: Jose Vicente Manjon Herrera
-#          Pierrick Coupe
-#
-#    Date: 12/02/2019
-#
-#################################################################
-
 from keras import backend as K
 import tensorflow as tf
 import numpy as np
@@ -18,6 +7,22 @@ from tensorflow import ones_like, equal, log
 from tensorflow.python import mul
 import keras
 
+def mdice_loss_pytorch(y_pred, y_true):
+    acu=0
+    n_class=y_true.size(1)
+    #epsilon=1
+    epsilon=0.01
+    for i in range(0,n_class):
+        b=y_true[:,i,:,:,:]
+        a=y_pred[:,i,:,:,:]
+        y_int = a[:]*b[:]
+        vol_pred = a[:].sum()
+        vol_gt = b[:].sum()
+        vol_int = y_int.sum()
+        #print(vol_int)
+        acu=acu+ (2*vol_int+ epsilon) / (vol_gt +vol_pred + epsilon)
+    acu=acu/n_class
+    return 1-acu
 """
 def BottleneckRegularized(y_true, y_pred):
    return keras.losses.mean_squared_error(y_pred[0],y_pred[1])
