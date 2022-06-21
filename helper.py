@@ -12,13 +12,12 @@ from scipy.signal import argrelextrema
 from collections import OrderedDict
 from tqdm import tqdm
 import losses
-from utils import IQDA, IQDA_v2, batch_rot90, rot_90, ssim3D, batch_rot90_2D, IQDA2D, IQDA2D_v2, seg_region, cow_mixing_mask, load_times
 from scipy.ndimage.morphology import binary_erosion,  binary_dilation, binary_opening, binary_closing
 from batchgenerators.transforms.spatial_transforms import SpatialTransform
 from batchgenerators.augmentations.spatial_transformations import augment_spatial
 from PIL import Image
 from skimage import measure
-from test_utils import seg_majvote_times_decoder_with_FMs, seg_majvote_times
+#from test_utils import seg_majvote_times_decoder_with_FMs, seg_majvote_times
 import torchio as tio
 
 
@@ -26,6 +25,133 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def save_img(img, name):
 	Image.fromarray(((img-img.min())/(img.max()-img.min())*255).astype(np.uint8), 'L').save(name)
+
+def IQDA_generator(x,y):
+	while(1):
+		ind1=np.random.permutation(x.shape[0])
+		mods=x.shape[-1]
+		for i in range(0,x.shape[0]):
+
+			x_=  np.copy(x[ind1[i]])
+			y_=  np.copy(y[ind1[i]])
+
+			op=np.random.choice(6,1,p=[0.1,0.15,0.15,0.2,0.2,0.2]) # 0:nada, 1:sharp, 2:blur, 3: axial blur 3, 4: axial blur 5, 5: axial blur 2
+
+			if(op==1):
+				for j in range(x_.shape[3]):
+					x_[:,:,:,j] = 2*x_[:,:,:,j]-ndimage.uniform_filter(x_[:,:,:,j], (3,3,3))
+
+			if(op==2):
+				for j in range(x_.shape[3]):
+					x_[:,:,:,j] = ndimage.uniform_filter(x_[:,:,:,j], (3,3,3))
+
+			if(op==3):
+				for j in range(x_.shape[3]):
+					x_[:,:,:,j]=ndimage.uniform_filter(x_[:,:,:,j], (1,1,3))
+
+			if(op==4):
+				for j in range(x_.shape[3]):
+					x_[:,:,:,j] = ndimage.uniform_filter(x_[:,:,:,j], (3,3,3))
+
+			if(op==5):
+				for j in range(x_.shape[3]):
+					x_[:,:,:,j] =ndimage.uniform_filter(x_[:,:,:,j], (1,1,2))
+
+			x_=np.expand_dims(x_, axis=0)
+			y_=np.expand_dims(y_, axis=0)
+
+
+			yield x_,y_
+
+def IQDA(x_):
+	for i in range(0,x_.shape[0]):
+		op=np.random.choice(5,1,p=[0.15,0.25,0.2,0.2,0.2]) # 0:nada, 1:sharp, 2:blur, 3: axial blur 3, 4: axial blur 5, 5: axial blur 2
+		for j in range(x_.shape[-1]):
+			if(op==1):
+				x_[i,:,:,:,j] = 2*x_[i,:,:,:,j]-ndimage.uniform_filter(x_[i,:,:,:,j], (3,3,3))
+			if(op==2):
+				x_[i,:,:,:,j] = ndimage.uniform_filter(x_[i,:,:,:,j], (3,3,3))
+			if(op==3):
+				x_[i,:,:,:,j]=ndimage.uniform_filter(x_[i,:,:,:,j], (1,1,3))
+			if(op==4):
+				x_[i,:,:,:,j] =ndimage.uniform_filter(x_[i,:,:,:,j], (1,1,2))
+		return x_
+
+def IQDA2D(x_):
+	for i in range(0,x_.shape[0]):
+		op=np.random.choice(3,1) # 0:nada, 1:sharp, 2:blur, 3: axial blur 3, 4: axial blur 5, 5: axial blur 2
+		for j in range(x_.shape[-1]):
+			if(op==1):
+				x_[i,:,:,j] = 2*x_[i,:,:,j]-ndimage.uniform_filter(x_[i,:,:,j], (3,3))
+			if(op==2):
+				x_[i,:,:,j] = ndimage.uniform_filter(x_[i,:,:,j], (3,3))
+
+		return x_
+
+def IQDA2D_v2(x_, op=None):
+	if(op==None):
+		op=np.random.choice(3,1 ,p=[0.1,0.45,0.45]) # 0:nada, 1:sharp, 2:blur, 3: axial blur 3, 4: axial blur 5, 5: axial blur 2
+	std=[np.random.uniform(0.25,0.6),np.random.uniform(0.25,0.6)]
+	alpha= np.random.uniform(1,3)
+
+	for j in range(x_.shape[-1]):
+		if(op==1):
+			x_[...,j] =  x_[...,j]+ alpha*(x_[...,j]-ndimage.gaussian_filter(x_[...,j], std))
+		if(op==2):
+			x_[...,j] = ndimage.gaussian_filter(x_[...,j], std)
+	return x_
+
+def IQDA_v2(x):
+	x_=np.copy(x)
+	op=np.random.choice(4,1,p=[0.1,0.3,0.3,0.3])
+	for j in range(x_.shape[-1]):
+		if(op==1):
+			std=[np.random.uniform(0.25,1),np.random.uniform(0.25,1),np.random.uniform(0.25,1)]
+			alpha= np.random.uniform(1,5)
+			x_[:,:,:,j] = x_[:,:,:,j]+ alpha*(x_[:,:,:,j]-ndimage.gaussian_filter(x_[:,:,:,j], std))
+		if(op==2):
+			std=[np.random.uniform(0.25,1),np.random.uniform(0.25,1),np.random.uniform(0.25,1)]
+			x_[:,:,:,j] = ndimage.gaussian_filter(x_[:,:,:,j], std)
+		if(op==3):
+			ax=int(np.random.uniform(1,6))
+			x_[:,:,:,j]=ndimage.uniform_filter(x_[:,:,:,j], (1,1,ax))
+	return x_
+
+def rot_90(a):
+	op=np.random.choice(10,1)
+	#print(op)
+	if(op==1):
+		a=np.rot90(a,k=2,axes=(1,0))
+	elif(op==9):
+		a=np.rot90(a,k=1,axes=(1,0))
+	elif(op==2):
+		a=np.rot90(a,k=3,axes=(1,0))
+	elif(op==3):
+		a=np.rot90(a,k=2,axes=(2,0))
+	elif(op==4):
+		a=np.rot90(a,k=1,axes=(2,0))
+	elif(op==5):
+		a=np.rot90(a,k=3,axes=(2,0))
+	elif(op==6):
+		a=np.rot90(a,k=2,axes=(1,2))
+	elif(op==7):
+		a=np.rot90(a,k=1,axes=(1,2))
+	elif(op==8):
+		a=np.rot90(a,k=3,axes=(1,2))
+
+	op=np.random.choice(4,1)
+	if(op==1):
+		a=a[-1::-1,:,:]
+	elif(op==2):
+		a=a[:,:,-1::-1]
+	elif(op==3):
+		a=a[:,-1::-1,:]
+	return a
+
+def batch_rot90(lesion_batch):
+	for i in range(lesion_batch.shape[0]):
+		lesion_batch[i]= rot_90(lesion_batch[i]) 
+	return lesion_batch
 
 #dataset_class
 class TileDataset(Dataset):
@@ -43,7 +169,7 @@ class TileDataset(Dataset):
 		np.random.shuffle(self.random_idx)
 		self.da=da
 
-		
+		n=0
 		a=np.zeros((nbNN[0],nbNN[1],nbNN[2]))
 		for x in range(nbNN[0]):
 			for y in range(nbNN[1]):
@@ -92,6 +218,75 @@ class TileDataset(Dataset):
 		h=X[:,:,:,:,x.shape[-1]+y.shape[-1]+z.shape[-1]:]
 		return x,y,z,h
 
+	def __getitem__(self, idx):
+		#print(idx)
+		if torch.is_tensor(idx):
+			idx = idx.tolist()
+
+		np.random.shuffle(self.random_idx)
+		x1_name=self.x_list[idx]
+		y1_name=x1_name.replace('x_','y_')
+		x1=np.load(x1_name)
+		y1=np.load(y1_name)
+
+
+		if(self.da=="rot"):
+			inputs,label= self.rot( x1, y1)
+
+		if(self.da=="iqda"):
+			inputs,label= self.iqda( x1, y1)
+
+		if(self.da=="iqda_v2"):
+			inputs,label= self.iqda_v2( x1, y1)
+
+		elif(self.da=="mixup"):
+			ind_ran=self.random_idx[idx]
+			x2_name=self.x_list[ind_ran]
+			y2_name=x2_name.replace('x_','y_')
+			x2=np.load(x2_name)
+			y2=np.load(y2_name)
+			inputs,label=self.Mixup(x1,x2,y1,y2)
+
+		else:
+			inputs=x1
+			label=y1
+		
+		sample = {'inputs': inputs, 'label': label}
+		if self.transform:
+			sample=self.transform(sample)
+		return sample
+
+class TileDataset_with_reg(TileDataset):
+	"""Face Landmarks dataset."""
+	def __init__(self,files_dir,tiles_to_consider=None, transform=None, da=False, nbNN=[5,5,5]):
+		super().__init__(files_dir,tiles_to_consider, transform, da, nbNN)
+		if(tiles_to_consider is None):
+			self.x_list= sorted(glob.glob(files_dir+"x*.npy"))
+		else:
+			self.x_list=[]
+			for tile in tiles_to_consider:
+				[self.x_list.append(name) for name in sorted(glob.glob(files_dir+"x*tile"+str(tile)+".npy"))]
+			
+		self.transform = transform
+		self.random_idx= np.arange(len(self.x_list))
+		np.random.shuffle(self.random_idx)
+		self.da=da
+
+		n=0
+		a=np.zeros((nbNN[0],nbNN[1],nbNN[2]))
+		for x in range(nbNN[0]):
+			for y in range(nbNN[1]):
+				for z in range(nbNN[2]):
+					a[x,y,z]= n
+					n=n+1
+
+		self.train_files_bytiles={}
+		for stepx in range(1,nbNN[0]-1):
+			for stepy in range(1,nbNN[1]-1):
+				for stepz in range(1,nbNN[2]-1):
+					tile_num= str(int(a[stepx,stepy,stepz]))
+					self.train_files_bytiles[tile_num]= sorted(glob.glob(files_dir+"x*tile_"+tile_num+".npy"))
+		#print(self.train_files_bytiles.keys())
 	def gen_iqda_2it(self,idx,same_ratio=0.8,sim='segmentation_distance'):
 		op=np.random.choice(2,1,p=[same_ratio,1-same_ratio]) # 0 same 1 different
 		x_1=np.load(self.x_list[idx])
@@ -134,16 +329,15 @@ class TileDataset(Dataset):
 			else:
 				#inter_sim= 2*np.sum(np.square(y_2[:,:,:,:,1]-y_1[:,:,:,:,1]))/(np.sum(y_2[:,:,:,:,1])+np.sum(y_1[:,:,:,:,1])+1)
 				inter_sim= np.sum(np.square(y_2[:,:,:,:,1]-y_1[:,:,:,:,1]))/ 350
-
-			
-			return x_1, x_2, y_1, y_2 ,inter_sim
+	
+		return x_1, x_2, y_1, y_2 ,inter_sim
 
 	def __getitem__(self, idx):
 		#print(idx)
 		if torch.is_tensor(idx):
 			idx = idx.tolist()
 
-		x1, x2, y1, y2 ,inter_sim= self.gen_iqda_2it()
+		x1, x2, y1, y2 ,inter_sim= self.gen_iqda_2it(idx)
 
 
 		if(self.da=="rot"):
@@ -411,18 +605,18 @@ def train_model(model,optimizer,criterion,val_criterion, Epoch,dataset_loader,
 
 					latent_distance= 2*torch.sum(torch.square(bottleneck1-bottleneck2), dim=(1,2,3,4))/(torch.mean(torch.square(bottleneck1), dim=(1,2,3,4))+torch.mean(torch.square(bottleneck2), dim=(1,2,3,4)))
 					consistency=  torch.mean(latent_distance* torch.exp(-sample['inter_sim']))
-
-					
-					loss = (criterion(pred1, labels1)+criterion(pred2, labels2)) *loss_weights[0]+ consistency*loss_weights[1]
+					loss_supervised= criterion(pred1, labels1)+criterion(pred2, labels2)
+					loss = loss_supervised *loss_weights[0]+ consistency*loss_weights[1]
+					tepoch.set_postfix(supervised_loss=loss_supervised.item(), regularization=consistency.item())
 
 				else:
 					inputs, labels =sample['inputs'].to(device) , sample['label'].to(device)
 					outputs= model(inputs)
 					loss = criterion(outputs, labels)
+					tepoch.set_postfix(loss=loss.item(), Dice=100. * (1-loss.item()))
 
 				loss.backward()
 				optimizer.step()
-				tepoch.set_postfix(loss=loss.item(), Dice=100. * (1-loss.item()))
 				running_loss += loss.item()
 				#break
 

@@ -17,10 +17,13 @@ import time,umap
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import patch_extraction
 from sklearn.decomposition import PCA
 from sklearn.cluster import KMeans,DBSCAN
+import torch
 
+device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+"""
 class CustomModelCheckpoint(ModelCheckpoint):
     def __init__(self,filepath,validation_data=(), monitor='val_loss', verbose=0,
                  save_best_only=False, save_weights_only=False,
@@ -79,7 +82,7 @@ class CustomModelCheckpoint(ModelCheckpoint):
                     self.model.save_weights(filepath, overwrite=True)
                 else:
                     self.model.save(filepath, overwrite=True)
-
+"""
 def seg_metrics(seg_vol, truth_vol, output_errors=False):
     time_start = time.time()
     seg_total = np.sum(seg_vol)
@@ -283,6 +286,49 @@ def features_from_names_flair(listaFLAIR,fun,listaMASK=None,ps=[64,64,64]):
         file_names.append(listaFLAIR[i])
     return bottleneck_features,file_names
 
+def features_from_names_pytorch(listaT1=None, listaFLAIR=None, idices=None, model=None,listaMASK=None,ps=[64,64,64]):
+    model.eval()
+    if(not idices is None):
+        if(not listaT1 is None):
+            listaT1=listaT1[idices]
+        listaFLAIR=listaFLAIR[idices]
+    
+    file_names=[]
+
+    for i in range(len(listaFLAIR)):
+        if(listaT1 is None):
+            try:
+                FLAIR=load_flair(listaFLAIR[i],listaMASK[i])
+
+            except:
+                FLAIR=load_flair(listaFLAIR[i])
+
+            FLAIR_cropped=crop_center(FLAIR,ps[0],ps[1],ps[2])
+            x_in=np.expand_dims(FLAIR_cropped,axis=0)
+        else:
+            try:
+                T1,FLAIR=load_modalities(listaT1[i],listaFLAIR[i],listaMASK[i])
+
+            except:
+                T1,FLAIR=load_modalities(listaT1[i],listaFLAIR[i])
+            x_in=np.concatenate((np.expand_dims(crop_center(T1,ps[0],ps[1],ps[2]),axis=0),np.expand_dims(crop_center(FLAIR,ps[0],ps[1],ps[2]),axis=0)), axis=0)
+
+        x_in=np.expand_dims(x_in,axis=0)
+        x_in= torch.from_numpy(x_in).to(device).float()
+        #bottleneck_features[listaT1_isbi[i]]=bottleneck_out[0].mean(axis=(0,1,2,3))
+        with torch.no_grad():
+            bottleneck_out,_,_,_ = model.encoder(x_in)
+
+        bottleneck_out_mean=bottleneck_out.cpu().numpy().mean()
+        
+        if(i==0):
+            bottleneck_features=np.expand_dims(bottleneck_out_mean,axis=0)
+        else:
+            bottleneck_features=np.concatenate((bottleneck_features,np.expand_dims(bottleneck_out_mean,axis=0)),axis=0)
+        file_names.append(listaFLAIR[i])
+    bottleneck_features= np.expand_dims(bottleneck_features,axis=1)
+    return bottleneck_features,file_names
+
 def  get_x(list_np):
     out=list_np[0]
     for i in range(1,len(list_np)):
@@ -397,8 +443,8 @@ def crop_center(img,cropx,cropy,cropz):
     return img[starty:starty+cropy,startx:startx+cropx,startz:startz+cropz]
 
 def to969696(T1,FLAIR):
-    T1=crop_center(T1,96,96,96)
-    FLAIR=crop_center(FLAIR,96,96,96)
+    T1=crop_center(T1,64,64,64)
+    FLAIR=crop_center(FLAIR,64,64,64)
     return T1,FLAIR
 
 def graph_based_rank(X, Q):
@@ -606,7 +652,7 @@ def load_isbi(one_out):
     Rootpath=os.getcwd()
     # number of networks per dimension
     nbNN=[5,5,5]
-    ps=[96,96,96]
+    ps=[64,64,64]
     np.random.seed(43)
     lib_path = os.path.join("..","lib","isbi_final_train_preprocessed")
 
@@ -844,8 +890,8 @@ def update_with_new_pseudo(model,x_train,y_train,new_pseudo,listaT1,listaFLAIR,l
         y_in=model.predict(x_in,batch_size=1)
         y_in=hard_labels(y_in)
         """
-        #seg = seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[96,96,96])
-        seg = seg_majvote(T1,FLAIR,model,nbNN=[3,3,3],ps=[96,96,96])
+        #seg = seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[64,64,64])
+        seg = seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[64,64,64])
         #x_in, y_in = random_patches_andLAB(T1,FLAIR,seg,number=5)
         x_in, y_in = notNull_patches_andLAB(T1,FLAIR,seg,number=5)
 
@@ -1038,8 +1084,8 @@ def update_data_folder(model,new_pseudo,listaT1,listaFLAIR,listaMASK=None,datafo
         except:
             T1,FLAIR=load_modalities(listaT1[new_pseudo[i]],listaFLAIR[new_pseudo[i]])
 
-        #seg = seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[96,96,96])
-        seg = seg_majvote(T1,FLAIR,model,nbNN=[3,3,3],ps=[96,96,96],regularized=regularized)
+        #seg = seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[64,64,64])
+        seg = seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[64,64,64],regularized=regularized)
         #x_in, y_in = random_patches_andLAB(T1,FLAIR,seg,number=5)
         x_in, y_in , out_indx= notNull_patches_andLAB(T1,FLAIR,seg,number=numbernotnullpatch)
         for j in range(x_in.shape[0]):
@@ -1047,7 +1093,7 @@ def update_data_folder(model,new_pseudo,listaT1,listaFLAIR,listaMASK=None,datafo
             np.save(datafolder+'y_'+str(numb_data+j+i*numbernotnullpatch)+"_tile_"+str(out_indx[j])+'.npy',y_in[j:j+1])
     return True
 
-def update_data_folder_flair(model,new_pseudo,listaFLAIR,listaMASK=None,datafolder='data/',numbernotnullpatch=2,regularized=False,nbNN=[3,3,3],ps=[64,64,64]):
+def update_data_folder_flair(model,new_pseudo,listaFLAIR,listaMASK=None,datafolder='data/',numbernotnullpatch=2,regularized=False,nbNN=[5,5,5],ps=[64,64,64]):
     numb_data= len(sorted(glob.glob(datafolder+"x*.npy")))
     for i in range(len(new_pseudo)):
         print(listaFLAIR[new_pseudo[i]])
@@ -1064,12 +1110,88 @@ def update_data_folder_flair(model,new_pseudo,listaFLAIR,listaMASK=None,datafold
             np.save(datafolder+'y_'+str(numb_data+j+i*numbernotnullpatch)+"_tile_"+str(out_indx[j])+'.npy',y_in[j:j+1])
     return True
 
+def update_data_folder_pytorch(model,new_pseudo,listaT1, listaFLAIR,listaMASK=None,datafolder='data/',numbernotnullpatch=2,nbNN=[5,5,5],ps=[64,64,64]):
+    numb_data= len(sorted(glob.glob(datafolder+"x*.npy")))
+    for i in range(len(new_pseudo)):
+        print(listaFLAIR[new_pseudo[i]])
+
+        if(listaT1 is None):
+
+            try:
+                FLAIR=load_flair(listaFLAIR[new_pseudo[i]],listaMASK[new_pseudo[i]])
+            except:
+                FLAIR=load_flair(listaFLAIR[new_pseudo[i]])
+
+        else:
+            try:
+                T1,FLAIR=load_modalities(listaT1[i],listaFLAIR[i],listaMASK[i])
+
+            except:
+                T1,FLAIR=load_modalities(listaT1[i],listaFLAIR[i])
+
+        if(listaT1 is None):
+            seg = seg_majvote_pytorch(None, FLAIR,model,ps=ps)
+            x_in, y_in , out_indx= notNull_flair_andLAB(FLAIR,seg,nbNN=nbNN,ps=ps,number=numbernotnullpatch)
+        else:
+            seg = seg_majvote_pytorch(T1, FLAIR,model,ps=ps)
+            x_in, y_in , out_indx= notNull_patches_andLAB(T1,FLAIR,seg,nbNN=nbNN,ps=ps,number=numbernotnullpatch)  
+
+        for j in range(x_in.shape[0]):
+            np.save(datafolder+'x_'+str(numb_data+j+i*numbernotnullpatch)+"_tile_"+str(out_indx[j])+'.npy',x_in[j:j+1])
+            np.save(datafolder+'y_'+str(numb_data+j+i*numbernotnullpatch)+"_tile_"+str(out_indx[j])+'.npy',y_in[j:j+1])
+    return True
+
 def load_seg(path):
     seg_img = nii.load(path)
     seg=seg_img.get_data()
     seg=seg.astype('int')
     return seg
 
+def seg_majvote_pytorch(T1,FLAIR,model,ps=[64,64,64],offset1=32,offset2=32,offset3=32,crop_bg=5):
+    MASK = (1-(FLAIR==0).astype('int'))
+    ind=np.where(MASK>0)
+    indbg=np.where(MASK==0)
+
+    out_shape=(FLAIR.shape[0],FLAIR.shape[1],FLAIR.shape[2],2)
+    output=np.zeros(out_shape,FLAIR.dtype)
+    acu=np.zeros(out_shape[0:3],FLAIR.dtype)
+
+    ii=0 # Network ID
+
+    for x in range(crop_bg,  FLAIR.shape[0]-crop_bg ,offset1):
+        xx = x+ps[0]
+        if xx> output.shape[0]:
+            xx = output.shape[0]
+            x=xx-ps[0]
+        for y in range(crop_bg,  FLAIR.shape[1]-crop_bg ,offset2):
+            yy = y+ps[1]
+            if yy> output.shape[1]:
+                yy = output.shape[1]
+                y=yy-ps[1]
+            for z in range(crop_bg,  FLAIR.shape[2]-crop_bg ,offset3):
+                zz = z+ps[2]
+                if zz> output.shape[2]:
+                    zz = output.shape[2]
+                    z=zz-ps[2]
+                if(T1 is None):
+                    T = np.reshape(   FLAIR[x:xx,y:yy,z:zz] , (1,ps[0],ps[1],ps[2], 1))
+                else:
+                    T = np.reshape(   T1[x:xx,y:yy,z:zz] , (1,ps[0],ps[1],ps[2], 1))
+                    F = np.reshape(    FLAIR[x:xx,y:yy,z:zz] , (1,ps[0],ps[1],ps[2], 1))
+                    T=np.concatenate((T,F), axis=4)
+                T=torch.from_numpy(T.transpose((0,4,1,2,3))).to(device).float()
+                with torch.no_grad():
+                    patches = model(T)
+                    patches= patches.cpu().numpy()
+                    patches= patches.transpose((0,2,3,4,1))
+                #store result
+                local_patch = np.reshape(patches,(patches.shape[1],patches.shape[2],patches.shape[3],patches.shape[4]))
+                output[x:xx,y:yy,z:zz,:]=output[x:xx,y:yy,z:zz,:]+local_patch[0:xx-x,0:yy-y,0:zz-z]
+                ii=ii+1
+
+    SEG= np.argmax(output, axis=3)
+    SEG_mask= np.reshape(SEG, SEG.shape[0:3])
+    return SEG_mask
 
 def keyword_toList(path,keyword):
     search=os.path.join(path,'*'+keyword+'*')
@@ -1078,7 +1200,7 @@ def keyword_toList(path,keyword):
     return lista
 
 
-def update_labeled_folder(listaT1,listaFLAIR,listaSEG,listaMASK=None,datafolder='data/',numbernotnullpatch=15):
+def update_labeled_folder(listaT1,listaFLAIR,listaSEG,listaMASK=None,datafolder='data/',numbernotnullpatch=15,nbNN=[5,5,5],ps=[64,64,64]):
     numb_data= len(sorted(glob.glob(os.path.join(datafolder,"x*.npy"))))
     print(numb_data)
     for i in range(len(listaT1)):
@@ -1088,13 +1210,13 @@ def update_labeled_folder(listaT1,listaFLAIR,listaSEG,listaMASK=None,datafolder=
         except:
             T1,FLAIR=load_modalities(listaT1[i],listaFLAIR[i])
         seg=load_seg(listaSEG[i])
-        x_in, y_in, out_indx = notNull_patches_andLAB(T1,FLAIR,seg,number=numbernotnullpatch)
+        x_in, y_in, out_indx = notNull_patches_andLAB(T1,FLAIR,seg,number=numbernotnullpatch,nbNN=nbNN,ps=ps)
         for j in range(x_in.shape[0]):
             np.save(os.path.join(datafolder,'x_'+str(numb_data+j+i*numbernotnullpatch)+"_tile_"+str(out_indx[j])+'.npy'),x_in[j:j+1])
             np.save(os.path.join(datafolder,'y_'+str(numb_data+j+i*numbernotnullpatch)+"_tile_"+str(out_indx[j])+'.npy'),y_in[j:j+1])
     return True
 
-def update_labeled_folder_flair(listaFLAIR,listaSEG,listaMASK=None,datafolder='data/',numbernotnullpatch=15,nbNN=[3,3,3],ps=[64,64,64]):
+def update_labeled_folder_flair(listaFLAIR,listaSEG,listaMASK=None,datafolder='data/',numbernotnullpatch=15,nbNN=[5,5,5],ps=[64,64,64]):
     numb_data= len(sorted(glob.glob(os.path.join(datafolder,"x*.npy"))))
     print(numb_data)
     for i in range(len(listaFLAIR)):
@@ -1129,7 +1251,7 @@ def hard_labels(y_in):
     y_0=1-y_1
     return np.concatenate((  np.expand_dims(y_0 , axis=4), np.expand_dims(y_1 , axis=4)),axis=4)
 
-def patches(T1,FLAIR,nbNN=[3,3,3],ps=[96,96,96]):
+def patches(T1,FLAIR,nbNN=[5,5,5],ps=[64,64,64]):
     crop_bg = 4
     [ps1,ps2,ps3]=ps
 
@@ -1139,14 +1261,14 @@ def patches(T1,FLAIR,nbNN=[3,3,3],ps=[96,96,96]):
     offset2 = ps2 - overlap2.astype('int')
     overlap3 = np.floor((nbNN[2]*ps3 - (T1.shape[2]-2*crop_bg)) / (nbNN[2]-1))
     offset3 = ps3 - overlap3.astype('int')
-    pT1=patch_extraction.patch_extract_3D_v2(T1,(ps1,ps2,ps3),nbNN,offset1,offset2,offset3,crop_bg)
-    pFLAIR=patch_extraction.patch_extract_3D_v2(FLAIR,(ps1,ps2,ps3),nbNN,offset1,offset2,offset3,crop_bg)
+    pT1=patch_extract_3D_v2(T1,(ps1,ps2,ps3),nbNN,offset1,offset2,offset3,crop_bg)
+    pFLAIR=patch_extract_3D_v2(FLAIR,(ps1,ps2,ps3),nbNN,offset1,offset2,offset3,crop_bg)
     pT1 = np.expand_dims(pT1.astype('float32'),axis=4)
     pFLAIR =np.expand_dims(pFLAIR.astype('float32'),axis=4)
     x_in=np.concatenate((pT1,pFLAIR),axis=4)
     return x_in
 
-def patches_flair(FLAIR,nbNN=[3,3,3],ps=[96,96,96]):
+def patches_flair(FLAIR,nbNN=[5,5,5],ps=[64,64,64]):
     crop_bg = 4
     [ps1,ps2,ps3]=ps
 
@@ -1156,24 +1278,77 @@ def patches_flair(FLAIR,nbNN=[3,3,3],ps=[96,96,96]):
     offset2 = ps2 - overlap2.astype('int')
     overlap3 = np.floor((nbNN[2]*ps3 - (FLAIR.shape[2]-2*crop_bg)) / (nbNN[2]-1))
     offset3 = ps3 - overlap3.astype('int')
-    pFLAIR=patch_extraction.patch_extract_3D_v2(FLAIR,(ps1,ps2,ps3),nbNN,offset1,offset2,offset3,crop_bg)
+    pFLAIR=patch_extract_3D_v2(FLAIR,(ps1,ps2,ps3),nbNN,offset1,offset2,offset3,crop_bg)
     pFLAIR =np.expand_dims(pFLAIR.astype('float32'),axis=4)
     return pFLAIR
 
-def random_patches(T1,FLAIR,nbNN=[3,3,3],number=10):
-    x_in= patches(T1,FLAIR,nbNN=[3,3,3])
+def patch_extract_3D_v2(input,patch_shape,nbNN,offx=1,offy=1,offz=1,crop_bg=0):
+	n=0
+	numPatches=nbNN[0]*nbNN[1]*nbNN[2]
+	local_patch = np.zeros((patch_shape[0],patch_shape[1],patch_shape[2]),input.dtype)
+	patches_3D=np.zeros((numPatches,patch_shape[0],patch_shape[1],patch_shape[2]),input.dtype)
+	for x in range(crop_bg,(nbNN[0]-1)*offx+crop_bg+1,offx):
+		for y in range(crop_bg,(nbNN[1]-1)*offy+crop_bg+1,offy):
+			for z in range(0,(nbNN[2]-1)*offz+1,offz): #spine is touching one side in Z dicrection, so crop has to be asymetric
+				xx = x+patch_shape[0]
+				if xx> input.shape[0]:
+					xx = input.shape[0]
+				yy = y+patch_shape[1]
+				if yy> input.shape[1]:
+					yy = input.shape[1]
+				zz = z+patch_shape[2]
+				if zz> input.shape[2]:
+					zz = input.shape[2]
+				# To deal with defferent patch size due to border issue
+				local_patch = local_patch*0
+				local_patch[0:xx-x,0:yy-y,0:zz-z] = input[x:xx,y:yy,z:zz]
+				a=np.reshape(local_patch,(1,patches_3D.shape[1],patches_3D.shape[2],patches_3D.shape[3]))
+				patches_3D[n,:,:,:]=a
+				n=n+1
+	patches_3D=patches_3D[0:n,:,:,:]
+	return patches_3D
+
+def patch_reconstruct_3D_v2(out_shape,patches,nbNN, offx=1,offy=1,offz=1,crop_bg=0):
+	n=0
+	output=np.zeros(out_shape,patches.dtype)
+	acu=np.zeros(out_shape,patches.dtype)
+	pesos=np.ones((patches.shape[1],patches.shape[2],patches.shape[3]))
+	for x in range(crop_background_border,(nbNN-1)*offx+crop_background_border+1,offx):
+		for y in range(crop_background_border,(nbNN-1)*offy+crop_background_border+1,offy):
+			for z in range(crop_background_border,(nbNN-1)*offz+crop_background_border+1,offz):
+
+				xx = x+patches.shape[1]
+				if xx> input.shape[0]:
+					xx = input.shape[0]
+				yy = y+patches.shape[2]
+				if yy> input.shape[1]:
+					yy = input.shape[1]
+				zz = z+patches.shape[3]
+				if zz> input.shape[2]:
+					zz = input.shape[2]
+
+				output[x:xx,y:yy,z:zz]=output[x:xx,y:yy,z:zz]+np.reshape(patches[n,:,:,:],(patches.shape[1],patches.shape[2],patches.shape[3]))
+				acu[x:xx,y:yy,z:zz]=acu[x:xx,y:yy,z:zz]+pesos
+				n=n+1
+	ind=np.where(acu==0)
+	acu[ind]=1
+	output=output/acu
+	return output
+
+def random_patches(T1,FLAIR,nbNN=[5,5,5],number=10):
+    x_in= patches(T1,FLAIR,nbNN=[5,5,5])
     random_idxs= np.arange(x_in.shape[0])
     np.random.shuffle(random_idxs)
     return x_in[random_idxs[:number]]
 
-def random_patches_andLAB(T1,FLAIR,LAB,nbNN=[3,3,3],number=10):
-    x_in= patches(T1,FLAIR,nbNN=[3,3,3])
-    y_in= patches(1-LAB,LAB,nbNN=[3,3,3]).astype('int')
+def random_patches_andLAB(T1,FLAIR,LAB,nbNN=[5,5,5],number=10):
+    x_in= patches(T1,FLAIR,nbNN=[5,5,5])
+    y_in= patches(1-LAB,LAB,nbNN=[5,5,5]).astype('int')
     random_idxs= np.arange(x_in.shape[0])
     np.random.shuffle(random_idxs)
     return x_in[random_idxs[:number]], y_in[random_idxs[:number]]
 
-def notNull_patches_andLAB(T1,FLAIR,LAB,nbNN=[3,3,3],number=10):
+def notNull_patches_andLAB(T1,FLAIR,LAB,ps=[64,64,64],nbNN=[5,5,5],number=10):
     x_in= patches(T1,FLAIR,nbNN=nbNN)
     y_in= patches(1-LAB,LAB,nbNN=nbNN).astype('int')
     sum_y_in=y_in[:,:,:,:,1].sum(axis=(1,2,3))
@@ -1182,7 +1357,7 @@ def notNull_patches_andLAB(T1,FLAIR,LAB,nbNN=[3,3,3],number=10):
 
     ###remove border tiles###
     a=np.zeros((nbNN[0],nbNN[1],nbNN[2]))
-
+    n=0
     for x in range(nbNN[0]):
         for y in range(nbNN[1]):
             for z in range(nbNN[2]):
@@ -1193,7 +1368,7 @@ def notNull_patches_andLAB(T1,FLAIR,LAB,nbNN=[3,3,3],number=10):
     for stepx in range(1,nbNN[0]-1):
         for stepy in range(1,nbNN[1]-1):
             for stepz in range(1,nbNN[2]-1):
-                tile_num= str(int(a[stepx,stepy,stepz]))
+                tile_num= int(a[stepx,stepy,stepz])
                 random_idxs.append(tile_num)
     
     random_idxs= np.array(random_idxs)
@@ -1218,12 +1393,28 @@ def notNull_patches_andLAB(T1,FLAIR,LAB,nbNN=[3,3,3],number=10):
             num=num+1
     return x, y, indx_out
 
-def notNull_flair_andLAB(FLAIR,LAB,nbNN=[3,3,3],ps=[64,64,64],number=10):
+def notNull_flair_andLAB(FLAIR,LAB,nbNN=[5,5,5],ps=[64,64,64],number=10):
     x_in= patches_flair(FLAIR,nbNN=nbNN,ps=ps)
     y_in= patches(1-LAB,LAB,nbNN=nbNN,ps=ps).astype('int')
     sum_y_in=y_in[:,:,:,:,1].sum(axis=(1,2,3))
     #print(x_in.shape[0])
-    random_idxs= np.arange(x_in.shape[0])
+    #random_idxs= np.arange(x_in.shape[0])
+    a=np.zeros((nbNN[0],nbNN[1],nbNN[2]))
+    n=0
+    for x in range(nbNN[0]):
+        for y in range(nbNN[1]):
+            for z in range(nbNN[2]):
+                a[x,y,z]= n
+                n=n+1
+
+    random_idxs= []
+    for stepx in range(1,nbNN[0]-1):
+        for stepy in range(1,nbNN[1]-1):
+            for stepz in range(1,nbNN[2]-1):
+                tile_num= int(a[stepx,stepy,stepz])
+                random_idxs.append(tile_num)
+    
+    random_idxs= np.array(random_idxs)
     np.random.shuffle(random_idxs)
     num=0
     x=x_in[random_idxs[0:1]]
@@ -1245,7 +1436,7 @@ def notNull_flair_andLAB(FLAIR,LAB,nbNN=[3,3,3],ps=[64,64,64],number=10):
             num=num+1
     return x, y, indx_out
 
-def seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[96,96,96],multi_out=False,multi_in=True):
+def seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[64,64,64],multi_out=False,multi_in=True):
     MASK = (1-(T1==0).astype('int'))
     ind=np.where(MASK>0)
     indbg=np.where(MASK==0)
@@ -1256,9 +1447,9 @@ def seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[96,96,96],multi_out=False,multi_
     offset2 = ps[1] - overlap2.astype('int')
     overlap3 = np.floor((nbNN[2]*ps[2] - (T1.shape[2]-2*crop_bg)) / (nbNN[2]-1))
     offset3 = ps[2]- overlap3.astype('int')
-    pT1=patch_extraction.patch_extract_3D_v2(T1,(ps[0],ps[1],ps[2]),nbNN,offset1,offset2,offset3,crop_bg)
+    pT1=patch_extract_3D_v2(T1,(ps[0],ps[1],ps[2]),nbNN,offset1,offset2,offset3,crop_bg)
     pT1= pT1.astype('float32')
-    pFLAIR=patch_extraction.patch_extract_3D_v2(FLAIR,(ps[0],ps[1],ps[2]),nbNN,offset1,offset2,offset3,crop_bg)
+    pFLAIR=patch_extract_3D_v2(FLAIR,(ps[0],ps[1],ps[2]),nbNN,offset1,offset2,offset3,crop_bg)
     pFLAIR= pFLAIR.astype('float32')
 
     out_shape=(T1.shape[0],T1.shape[1],T1.shape[2],2)
@@ -1319,7 +1510,7 @@ def seg_majvote(T1,FLAIR,model,nbNN=[5,5,5],ps=[96,96,96],multi_out=False,multi_
 
     return SEG_mask
 
-def seg_majvote_flair(FLAIR,model,nbNN=[5,5,5],ps=[96,96,96],regularized=False):
+def seg_majvote_flair(FLAIR,model,nbNN=[5,5,5],ps=[64,64,64],regularized=False):
     MASK = (1-(FLAIR==0).astype('int'))
     ind=np.where(MASK>0)
     indbg=np.where(MASK==0)
@@ -1331,7 +1522,7 @@ def seg_majvote_flair(FLAIR,model,nbNN=[5,5,5],ps=[96,96,96],regularized=False):
     overlap3 = np.floor((nbNN[2]*ps[2] - (FLAIR.shape[2]-2*crop_bg)) / (nbNN[2]-1))
     offset3 = ps[2]- overlap3.astype('int')
 
-    pFLAIR=patch_extraction.patch_extract_3D_v2(FLAIR,(ps[0],ps[1],ps[2]),nbNN,offset1,offset2,offset3,crop_bg)
+    pFLAIR=patch_extract_3D_v2(FLAIR,(ps[0],ps[1],ps[2]),nbNN,offset1,offset2,offset3,crop_bg)
     pFLAIR= pFLAIR.astype('float32')
 
     out_shape=(FLAIR.shape[0],FLAIR.shape[1],FLAIR.shape[2],2)
@@ -1387,7 +1578,7 @@ def seg_majvote_flair(FLAIR,model,nbNN=[5,5,5],ps=[96,96,96],regularized=False):
 
     return SEG_mask
 
-def seg_majvote_flair_ssl(FLAIR,model,nbNN=[5,5,5],ps=[96,96,96],regularized=False):
+def seg_majvote_flair_ssl(FLAIR,model,nbNN=[5,5,5],ps=[64,64,64],regularized=False):
     MASK = (1-(FLAIR==0).astype('int'))
     ind=np.where(MASK>0)
     indbg=np.where(MASK==0)
@@ -1399,7 +1590,7 @@ def seg_majvote_flair_ssl(FLAIR,model,nbNN=[5,5,5],ps=[96,96,96],regularized=Fal
     overlap3 = np.floor((nbNN[2]*ps[2] - (FLAIR.shape[2]-2*crop_bg)) / (nbNN[2]-1))
     offset3 = ps[2]- overlap3.astype('int')
 
-    pFLAIR=patch_extraction.patch_extract_3D_v2(FLAIR,(ps[0],ps[1],ps[2]),nbNN,offset1,offset2,offset3,crop_bg)
+    pFLAIR=patch_extract_3D_v2(FLAIR,(ps[0],ps[1],ps[2]),nbNN,offset1,offset2,offset3,crop_bg)
     pFLAIR= pFLAIR.astype('float32')
 
     out_shape=(FLAIR.shape[0],FLAIR.shape[1],FLAIR.shape[2],2)

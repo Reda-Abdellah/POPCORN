@@ -7,70 +7,126 @@ import losses
 import torch
 from helper import *
 import torch.optim as optim
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def worker_init_fn(worker_id):
 	np.random.seed(np.random.get_state()[1][0] + worker_id)
 
-def POPCORN( ps=[64,64,64], dataset_path="/lib/", Epoch_per_step=2, increment_new_data=200, datafolder='data_nearest/',dataselection_strategy='nearest',modality="FLAIR",
-                resume=False, resume_after_adding_pseudo_of_step=1, load_precomputed_features=False, unlabeled_dataset="volbrain",recompute_distance_each_step=True,
+def POPCORN( ps=[64,64,64], nbNN=[5,5,5], dataset_path="/lib/", Epoch_per_step=2, increment=200, datafolder='data_nearest/',datafolder_val='data_nearest_val/',dataselection_strategy='nearest',modality="T1_FLAIR",batch_size=4,
+                resume=False, resume_after_adding_pseudo_of_step=1, load_precomputed_features=False, unlabeled_dataset="OFSEP_and_volbrain",recompute_distance_each_step=True,Snapshot=True, da_type="iqda_v2",
                   regularized=True, loss_weights=[1,0.01], k=5):
 
     
     if(regularized):
-        in_filepath='weights/SUPERVISED_regularized.h5'
+        in_filepath='weights/SUPERVISED_'+modality+'_regularized.pt'
     else:
-        in_filepath='weights/SUPERVISED_noreg.h5'
+        in_filepath='weights/SUPERVISED_'+modality+'_noreg.h5'
     
+    out_filepath= lambda x: 'weights/'+sys.argv[0].replace('.py','_step')+"%02d" % (x)+'.pt'
+    best_weight= 'weights/'+sys.argv[0].replace('.py','')+'_best.pt'
     model=torch.load(in_filepath)
     
     if(unlabeled_dataset=="volbrain"):
-        listaFLAIR = sorted(glob.glob(dataset_path+"/volbrain_qc/n_mfmni*flair*.nii*"))
-        listaMASK = sorted(glob.glob(dataset_path+"/volbrain_qc/mask*.nii*"))
+        listaT1= sorted(glob.glob(dataset_path+"/volbrain/n_mfmni*t1*.nii*"))
+        listaFLAIR = sorted(glob.glob(dataset_path+"/volbrain/n_mfmni*flair*.nii*"))
+        listaMASK = sorted(glob.glob(dataset_path+"/volbrain/mask*.nii*"))
         listaMASK = np.array(listaMASK)
+        listaT1= np.array(listaT1)
+        listaFLAIR= np.array(listaFLAIR)
     elif(unlabeled_dataset=="OFSEP_and_volbrain"):
-        listaFLAIR = sorted(glob.glob(dataset_path+"/volbrain_qc/n_mfmni*flair*.nii*"))+sorted(glob.glob(dataset_path+"/OFSEP/data/n_mfmni*flair*.nii*"))
-        listaMASK = sorted(glob.glob(dataset_path+"/volbrain_qc/mask*.nii*"))+sorted(glob.glob(dataset_path+"/OFSEP/data/mask*.nii*"))
-        listaMASK = np.array(listaMASK)
-    elif(unlabeled_dataset=="isbi_test"):
-        listaFLAIR = sorted(glob.glob(dataset_path+"/ISBI_preprocess/test*flair*.nii*"))
+        listaT1 = sorted(glob.glob(dataset_path+"/volbrain/n_mfmni*t1*.nii*"))+sorted(glob.glob(dataset_path+"/OFSEP/n_mfmni*T1*.nii*"))
+        listaFLAIR = sorted(glob.glob(dataset_path+"/volbrain/n_mfmni*flair*.nii*"))+sorted(glob.glob(dataset_path+"/OFSEP/n_mfmni*FLAIR*.nii*"))
+        listaMASK = sorted(glob.glob(dataset_path+"/volbrain/mask*.nii*"))+sorted(glob.glob(dataset_path+"/OFSEP/mask*.nii*"))
+        listaMASK = np.array(listaMASK)#[:10]
+        listaT1= np.array(listaT1)#[:10]
+        listaFLAIR= np.array(listaFLAIR)#[:10]
+   
+    if(modality=='FLAIR'):
+        listaT1=None
 
-    listaFLAIR=np.array(listaFLAIR)
+    lib_path = os.path.join("..","all_ms_preprocessed")
+        
+    listaT1_1=keyword_toList(path=lib_path,keyword="mso*mprage.")
+    listaFLAIR_1=keyword_toList(path=lib_path,keyword="mso*flair")
+    listaT1_2=keyword_toList(path=lib_path,keyword="msseg*mprage.")
+    listaFLAIR_2=keyword_toList(path=lib_path,keyword="msseg*flair")
+    listaSEG_2=keyword_toList(path=lib_path,keyword="msseg*mask1")
+    listaSEG_1=keyword_toList(path=lib_path,keyword="mso*mask1")
+    listaT1_3=keyword_toList(path=lib_path,keyword="isbi*mprage_pp.")
+    listaFLAIR_3=keyword_toList(path=lib_path,keyword="isbi*flair")
+    listaSEG1_3=keyword_toList(path=lib_path,keyword="isbi*mask1")
+    listaSEG2_3=keyword_toList(path=lib_path,keyword="isbi*mask2")
 
-    lib_path_3 = os.path.join(dataset_path,"isbi_final_train_preprocessed")
+    listaFLAIR_labeled= np.array(listaFLAIR_1+listaFLAIR_3)#[:10]
+    listaT1_labeled= np.array(listaT1_1+listaT1_3)#[:10]
+    if(not resume): 
+        try:
+            if(os.path.exists(datafolder)):
+                shutil.rmtree(datafolder)
+                os.mkdir(datafolder)
+        except OSError:
+            print ("Creation of the directory %s failed" % datafolder)
+        else:
+            print ("Successfully created the directory %s " % datafolder)
 
-    listaFLAIR_3=keyword_toList(path=lib_path_3,keyword="flair")
-    listaSEG1_3=keyword_toList(path=lib_path_3,keyword="mask1")
-    listaSEG2_3=keyword_toList(path=lib_path_3,keyword="mask2")
+        try:
+            if(os.path.exists(datafolder_val)):
+                shutil.rmtree(datafolder_val)
+            os.mkdir(datafolder_val)
+        except OSError:
+            print ("Creation of the directory %s failed" % datafolder_val)
+        else:
+            print ("Successfully created the directory %s " % datafolder_val)
 
-    listaFLAIR_labeled= np.array(listaFLAIR_3)
+        
 
-    unlabeled_indxs= range(len(listaFLAIR))
+        if(modality=='T1_FLAIR'):
+            update_labeled_folder(listaT1_2,listaFLAIR_2,listaSEG_2,listaMASK=None,datafolder=datafolder_val,nbNN=nbNN,ps=ps,numbernotnullpatch=10)
+            update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG1_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=5)
+            update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=5)
+            update_labeled_folder(listaT1_1,listaFLAIR_1,listaSEG_1,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=15)
+        else:
+            update_labeled_folder_flair(listaT1_2,listaFLAIR_2,listaSEG_2,listaMASK=None,datafolder=datafolder_val,nbNN=nbNN,ps=ps,numbernotnullpatch=10)
+            update_labeled_folder_flair(listaT1_3,listaFLAIR_3,listaSEG1_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=5)
+            update_labeled_folder_flair(listaT1_3,listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=5)
+            update_labeled_folder_flair(listaT1_1,listaFLAIR_1,listaSEG_1,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=15)
+    
+    #print(listaFLAIR_labeled)
+
+    unlabeled_indxs= [i for i in range(len(listaFLAIR))]
     pseudolabeled_indxs=[]
     unlabeled_num=len(unlabeled_indxs)
     pseudolabeled_num=len(pseudolabeled_indxs)
     labeled_num=len(listaFLAIR_labeled)
 
-    update_labeled_folder_flair(listaFLAIR_3,listaSEG1_3,listaMASK=None,datafolder=datafolder,numbernotnullpatch=15)
-    update_labeled_folder_flair(listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,numbernotnullpatch=15)
-
-
+    """
+    transform_list=[]
+    transform_list.append(ToTensor())
+    data_transform = transforms.Compose(transform_list)
+    dataset_train = TileDataset_with_reg(datafolder,transform=data_transform,da=da_type)
+    """
+    
     step=0
-    model.load_weights(in_filepath)
+    model= torch.load(in_filepath)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    criterion= lambda x,y : losses.mdice_loss_pytorch(x,y)
 
     if( (not recompute_distance_each_step) and dataselection_strategy=='nearest'):
-        if(load_precomputed_features):
+        if(load_precomputed_features or resume):
             print('loading precomputed features...')
             rank_distance=np.load('rank_distance_volbrain_tsne3_regularized.npy')
         else:
             print('computing bottleneck_features...')
-            bottleneck_features_labeled,file_names= features_from_names_flair(listaFLAIR_labeled,fun)
-            bottleneck_features_unlabeled,file_names= features_from_names_flair(listaFLAIR[unlabeled_indxs],fun,listaMASK[unlabeled_indxs])
+            bottleneck_features_labeled,file_names= features_from_names_pytorch(listaT1_labeled, listaFLAIR_labeled, None, model)
+            bottleneck_features_unlabeled,file_names= features_from_names_pytorch(listaT1, listaFLAIR, unlabeled_indxs ,model, listaMASK)
+            print(bottleneck_features_unlabeled.shape)
             print('computing projection to simplar dataplane...')
             rank_distance= tsne_rank(bottleneck_features_unlabeled,bottleneck_features_labeled,n_components=3)
             np.save('rank_distance_volbrain_tsne3_regularized.npy',rank_distance)
 
     if(resume):
         for it in range(resume_after_adding_pseudo_of_step):
+            increment_new_data= int(increment+ it* increment/2)
             print('resuming training...')
             if(dataselection_strategy=='nearest'):
                 new_pos_in_features = give_dist_for_Kclosest(rank_distance,n_indxs=increment_new_data,k=k)
@@ -89,25 +145,29 @@ def POPCORN( ps=[64,64,64], dataset_path="/lib/", Epoch_per_step=2, increment_ne
             unlabeled_num=len(unlabeled_indxs)
         step=resume_after_adding_pseudo_of_step-1
         if(not step==0):
-            model.load_weights(out_filepath(step))
+            model= torch.load(out_filepath(step))
 
 
     #Training
+    increment_new_data= int(increment+ step* increment/2)
     while(unlabeled_num>increment_new_data):
+        increment_new_data= int(increment+ step* increment/2)
         step=step+1
-        out_filepath= 'weights/'+sys.argv[0].replace('.py','_step')+"%02d" % (x)+'.h5'
+        
         print('step: '+str(step))
         print('loading new data...')
         if( resume and step==resume_after_adding_pseudo_of_step):
             print('resuming..')
+            #update_data_folder_pytorch(model,new_pos_in_features[430:],listaT1,listaFLAIR,listaMASK,datafolder=datafolder)
         else:
             
             if(dataselection_strategy=='nearest'):
                 if(recompute_distance_each_step):
-                    bottleneck_features_labeled,file_names= features_from_names_flair(listaFLAIR_labeled,fun)
-                    bottleneck_features_unlabeled,file_names= features_from_names_flair(listaFLAIR[unlabeled_indxs],fun,listaMASK[unlabeled_indxs])
+                    bottleneck_features_labeled,file_names= features_from_names_pytorch(listaT1_labeled, listaFLAIR_labeled, None, model)
+                    bottleneck_features_unlabeled,file_names= features_from_names_pytorch(listaT1, listaFLAIR, unlabeled_indxs ,model, listaMASK)
+                   
                     if(len(pseudolabeled_indxs)>0):
-                        bottleneck_features_pseudolabeled,file_names= features_from_names_flair(listaFLAIR[pseudolabeled_indxs],fun,listaMASK[pseudolabeled_indxs])
+                        bottleneck_features_pseudolabeled,file_names= features_from_names_pytorch(listaT1, listaFLAIR, pseudolabeled_indxs ,model, listaMASK)
                         bottleneck_features_labeled=  np.concatenate((bottleneck_features_labeled,bottleneck_features_pseudolabeled),axis=0)
                     print('computing projection to simplar dataplane...')
                     rank_distance= tsne_rank(bottleneck_features_unlabeled,bottleneck_features_labeled,n_components=3)
@@ -126,34 +186,72 @@ def POPCORN( ps=[64,64,64], dataset_path="/lib/", Epoch_per_step=2, increment_ne
             unlabeled_indxs =  [x for x in unlabeled_indxs if x not in pseudolabeled_indxs]
             #update num
             unlabeled_num=len(unlabeled_indxs)
-            update_data_folder_flair(model,new_pos_in_features,listaFLAIR,listaMASK,datafolder=datafolder,regularized=regularized)
-        train_files_bytiles=[]
-        for i in range(27):
-            train_files_bytiles.append(keyword_toList(datafolder,"x*tile_"+str(i)+".npy") )
-
-
-        print('training with new data...')
+            update_data_folder_pytorch(model,new_pos_in_features,listaT1,listaFLAIR,listaMASK,datafolder=datafolder)
         
-        numb_data= len(sorted(glob.glob(datafolder+"x*.npy")))
+        
+        transform_list=[]
+        transform_list.append(ToTensor())
+        data_transform = transforms.Compose(transform_list)
+
         if(regularized):
-            result=model.fit_generator(data_gen_iqda_2it(datafolder,train_files_bytiles,sim='output_diff'), 
-                steps_per_epoch=numb_data,
-                epochs=Epoch_per_step)
+            dataset_train = TileDataset_with_reg(datafolder,transform=data_transform,da=da_type)
         else:
-            result=model.fit_generator(data_gen_iqda(datafolder),
-                steps_per_epoch=numb_data,
-                epochs=Epoch_per_step)
+            dataset_train = TileDataset(datafolder,transform=data_transform,da=da_type)
+        dataset_val = TileDataset(datafolder_val,transform=data_transform,da=False)
+        dataset_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True, worker_init_fn=worker_init_fn)
+        dataset_loader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=False)
 
-        model.save_weights(out_filepath(step))
+        best_val_loss= train_model(model=model,optimizer=optimizer,criterion=criterion,Epoch=Epoch_per_step,regularized=True,  loss_weights=loss_weights,
+                dataset_loader=dataset_loader,dataset_loader_val=dataset_loader_val,val_criterion=criterion,eval_strategy='classic',
+                out_PATH=best_weight)
+
+        torch.save(model, out_filepath(step))
+    
+    if (Snapshot):
+        model= torch.load(filepath) # To get the best one
+        for j in range(0,10):
+            print("Run=",j)
+            best_val_loss= train_model(model=model,optimizer=optimizer,criterion=criterion,Epoch=1,regularized=True,  loss_weights=loss_weights,
+                        dataset_loader=dataset_loader,dataset_loader_val=dataset_loader_val,val_criterion=criterion,eval_strategy='classic',
+                        out_PATH=best_weight, best_val_loss=best_val_loss)
+
+            #model ensemble regularization (snapshot)
+            if(j==0):
+                moving_average_model = copy.deepcopy(model)
+            else:
+                #changing_ratio=1/(j+1)
+                changing_ratio= 0.1
+                moving_average_weights(running_model=model,stable_model=moving_average_model,changing_ratio=changing_ratio )
+                moving_average_model = copy.deepcopy(model)
+    
+    torch.save(model, out_filepath("snapshot"))
+
+    
 
 
-def train_on_labeled_only(regularized=True,save=True,  loss_weights=[1,0.01],batch_size=1 ,early_stop_treshold=30, da_type="iqda_v2",modality='T1_FLAIR', nbNN=[5,5,5],ps=[64,64,64],Snapshot=True):
+def train_on_labeled_only(regularized=True,save=True,Epoch=100, datafolder='dataset/train/',datafolder_val='dataset/val/', loss_weights=[1,0.01],batch_size=1 ,early_stop_treshold=30, da_type="iqda_v2",modality='T1_FLAIR', nbNN=[5,5,5],ps=[64,64,64],Snapshot=True):
     
 
     if(save):
-        datafolder='dataset/train/'
-        datafolder_val='dataset/val/'
-        Epoch=100
+        
+        try:
+            if(os.path.exists(datafolder)):
+                shutil.rmtree(datafolder)
+                os.mkdir(datafolder)
+        except OSError:
+            print ("Creation of the directory %s failed" % datafolder)
+        else:
+            print ("Successfully created the directory %s " % datafolder)
+
+        try:
+            if(os.path.exists(datafolder_val)):
+                shutil.rmtree(datafolder_val)
+            os.mkdir(datafolder_val)
+        except OSError:
+            print ("Creation of the directory %s failed" % datafolder_val)
+        else:
+            print ("Successfully created the directory %s " % datafolder_val)
+
         lib_path = os.path.join("..","all_ms_preprocessed")
         
         listaT1_1=keyword_toList(path=lib_path,keyword="mso*mprage.")
@@ -161,16 +259,22 @@ def train_on_labeled_only(regularized=True,save=True,  loss_weights=[1,0.01],bat
         listaT1_2=keyword_toList(path=lib_path,keyword="msseg*mprage.")
         listaFLAIR_2=keyword_toList(path=lib_path,keyword="msseg*flair")
         listaSEG_2=keyword_toList(path=lib_path,keyword="msseg*mask1")
-        listaSEG_1=keyword_toList(path=lib_path,keyword="mso_mask1")
+        listaSEG_1=keyword_toList(path=lib_path,keyword="mso*mask1")
         listaT1_3=keyword_toList(path=lib_path,keyword="isbi*mprage_pp.")
         listaFLAIR_3=keyword_toList(path=lib_path,keyword="isbi*flair")
         listaSEG1_3=keyword_toList(path=lib_path,keyword="isbi*mask1")
         listaSEG2_3=keyword_toList(path=lib_path,keyword="isbi*mask2")
 
-        update_labeled_folder(listaT1_2,listaFLAIR_2,listaSEG_2,listaMASK=None,datafolder=datafolder_val,nbNN=nbNN,ps=ps,numbernotnullpatch=10)
-        update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG1_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=15)
-        update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=15)
-        update_labeled_folder(listaT1_1,listaFLAIR_1,listaSEG_1,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=30)
+        if(modality=='T1_FLAIR'):
+            update_labeled_folder(listaT1_2,listaFLAIR_2,listaSEG_2,listaMASK=None,datafolder=datafolder_val,nbNN=nbNN,ps=ps,numbernotnullpatch=10)
+            update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG1_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=5)
+            update_labeled_folder(listaT1_3,listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=5)
+            update_labeled_folder(listaT1_1,listaFLAIR_1,listaSEG_1,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=15)
+        else:
+            update_labeled_folder_flair(listaT1_2,listaFLAIR_2,listaSEG_2,listaMASK=None,datafolder=datafolder_val,nbNN=nbNN,ps=ps,numbernotnullpatch=10)
+            update_labeled_folder_flair(listaT1_3,listaFLAIR_3,listaSEG1_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=5)
+            update_labeled_folder_flair(listaT1_3,listaFLAIR_3,listaSEG2_3,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=5)
+            update_labeled_folder_flair(listaT1_1,listaFLAIR_1,listaSEG_1,listaMASK=None,datafolder=datafolder,nbNN=nbNN,ps=ps,numbernotnullpatch=15)
 
     t0=time.time()
 
@@ -183,18 +287,15 @@ def train_on_labeled_only(regularized=True,save=True,  loss_weights=[1,0.01],bat
     else:
         in_dim=1
     model = modelos.unet_assemblynet(nf,2,drop,in_dim)
+    model.to(device)
     optimizer = optim.Adam(model.parameters(), lr=0.0001)
     criterion= lambda x,y : losses.mdice_loss_pytorch(x,y)
 
     if(regularized):
-        filepath='weights/SUPERVISED_regularized.h5'
+        filepath='weights/SUPERVISED_'+modality+'_regularized.pt'
     else:
-        filepath='weights/SUPERVISED_noreg.h5'
+        filepath='weights/SUPERVISED_'+modality+'_noreg.h5'
 
-    
-
-    #numb_data= len(sorted(glob.glob(datafolder+"x*.npy")))
-    #numb_data_val= len(sorted(glob.glob(datafolder_val+"x*.npy")))
 
     transform_list=[]
 
@@ -202,12 +303,15 @@ def train_on_labeled_only(regularized=True,save=True,  loss_weights=[1,0.01],bat
 
 
     data_transform = transforms.Compose(transform_list)
-    dataset_train = TileDataset(datafolder,transform=data_transform,da=da_type)
+    if(regularized):
+        dataset_train = TileDataset_with_reg(datafolder,transform=data_transform,da=da_type)
+    else:
+        dataset_train = TileDataset(datafolder,transform=data_transform,da=da_type)
     dataset_val = TileDataset(datafolder_val,transform=data_transform,da=False)
     dataset_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True, worker_init_fn=worker_init_fn)
     dataset_loader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=False)
 
-    best_val_loss= train_model(model=model,optimizer=optimizer,criterion=criterion,Epoch=Epoch,regularized=True,  loss_weights=[1,0.01],
+    best_val_loss= train_model(model=model,optimizer=optimizer,criterion=criterion,Epoch=Epoch,regularized=True,  loss_weights=loss_weights,
             dataset_loader=dataset_loader,dataset_loader_val=dataset_loader_val,val_criterion=criterion,eval_strategy='classic',
             out_PATH=filepath,early_stop=True,early_stop_treshold=early_stop_treshold)
 
@@ -216,7 +320,7 @@ def train_on_labeled_only(regularized=True,save=True,  loss_weights=[1,0.01],bat
         model= torch.load(filepath) # To get the best one
         for j in range(0,early_stop_treshold):
             print("Run=",j)
-            best_val_loss= train_model(model=model,optimizer=optimizer,criterion=criterion,Epoch=1,regularized=True,  loss_weights=[1,0.01],
+            best_val_loss= train_model(model=model,optimizer=optimizer,criterion=criterion,Epoch=1,regularized=True,  loss_weights=loss_weights,
                         dataset_loader=dataset_loader,dataset_loader_val=dataset_loader_val,val_criterion=criterion,eval_strategy='classic',
                         out_PATH=filepath, best_val_loss=best_val_loss)
 
