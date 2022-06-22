@@ -23,66 +23,6 @@ import torch
 
 device=torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-"""
-class CustomModelCheckpoint(ModelCheckpoint):
-    def __init__(self,filepath,validation_data=(), monitor='val_loss', verbose=0,
-                 save_best_only=False, save_weights_only=False,
-                 mode='auto', period=1):
-        #super(ModelCheckpoint, self).__init__()
-        self.monitor = monitor
-        self.verbose = verbose
-        self.filepath = filepath
-        self.save_best_only = save_best_only
-        self.save_weights_only = save_weights_only
-        self.period = period
-        self.epochs_since_last_save = 0
-        super(CustomModelCheckpoint, self).__init__(filepath,monitor=monitor, verbose=verbose,
-                     save_best_only=save_best_only, save_weights_only=save_weights_only,
-                     mode=mode, period=period)
-        self.X_val, self.y_val = validation_data
-        self.y_val =np.argmax(self.y_val, axis=-1)
-    def pred_val_score(self):
-        y_pred = self.model.predict(self.X_val, batch_size=1,verbose=0)
-        y_pred = np.argmax(y_pred, axis=-1)
-        return score_batch( y_pred,self.y_val)
-
-    def on_epoch_end(self, epoch, logs=None):
-        logs = logs or {}
-        self.epochs_since_last_save += 1
-        if self.epochs_since_last_save >= self.period:
-            self.epochs_since_last_save = 0
-            filepath = self.filepath.format(epoch=epoch + 1, **logs)
-            if self.save_best_only:
-
-                current =self.pred_val_score()
-                print('score of validation:'+str(current))
-                if current is None:
-                    warnings.warn('Can save best model only with %s available, '
-                                  'skipping.' % (self.monitor), RuntimeWarning)
-                else:
-                    if self.monitor_op(current, self.best):
-                        if self.verbose > 0:
-                            print('\nEpoch %05d: %s improved from %0.5f to %0.5f,'
-                                  ' saving model to %s'
-                                  % (epoch + 1, self.monitor, self.best,
-                                     current, filepath))
-                        self.best = current
-                        if self.save_weights_only:
-                            self.model.save_weights(filepath, overwrite=True)
-                        else:
-                            self.model.save(filepath, overwrite=True)
-                    else:
-                        if self.verbose > 0:
-                            print('\nEpoch %05d: %s did not improve from %0.5f' %
-                                  (epoch + 1, self.monitor, self.best))
-            else:
-                if self.verbose > 0:
-                    print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
-                if self.save_weights_only:
-                    self.model.save_weights(filepath, overwrite=True)
-                else:
-                    self.model.save(filepath, overwrite=True)
-"""
 def seg_metrics(seg_vol, truth_vol, output_errors=False):
     time_start = time.time()
     seg_total = np.sum(seg_vol)
@@ -119,16 +59,16 @@ def seg_metrics(seg_vol, truth_vol, output_errors=False):
                         ('ltpr', ltpr), ('vd', vd), ('corr', corr)])
 
 def mdice(y_pred, y_true):
-		acu=0
-		size=y_true.get_shape().as_list()
-		epsilon=0.00000000001
-		for i in range(0,size[4]):
-			a=y_true[:,:,:,:,i]
-			b=y_pred[:,:,:,:,i]
-			y_int = a[:]*b[:]
-			acu=acu+(2*K.sum(y_int[:]) / (K.sum(a[:]) + K.sum(b[:]) + epsilon) )
-		acu=acu/(size[4])
-		return acu
+        acu=0
+        size=y_true.get_shape().as_list()
+        epsilon=0.00000000001
+        for i in range(0,size[4]):
+            a=y_true[:,:,:,:,i]
+            b=y_pred[:,:,:,:,i]
+            y_int = a[:]*b[:]
+            acu=acu+(2*K.sum(y_int[:]) / (K.sum(a[:]) + K.sum(b[:]) + epsilon) )
+        acu=acu/(size[4])
+        return acu
 
 def get_list_from_ropes(ropes):
     out=[]
@@ -914,18 +854,18 @@ def mixup(x1,x2,y1,y2,alfa=0.3):
     return x,y
 
 def IQDA(x_):
-	for i in range(0,x_.shape[0]):
-		op=np.random.choice(5,1,p=[0.15,0.25,0.2,0.2,0.2]) # 0:nada, 1:sharp, 2:blur, 3: axial blur 3, 4: axial blur 5, 5: axial blur 2
-		for j in range(x_.shape[-1]):
-			if(op==1):
-				x_[i,:,:,:,j] = 2*x_[i,:,:,:,j]-ndimage.uniform_filter(x_[i,:,:,:,j], (3,3,3))
-			if(op==2):
-				x_[i,:,:,:,j] = ndimage.uniform_filter(x_[i,:,:,:,j], (3,3,3))
-			if(op==3):
-				x_[i,:,:,:,j]=ndimage.uniform_filter(x_[i,:,:,:,j], (1,1,3))
-			if(op==4):
-				x_[i,:,:,:,j] =ndimage.uniform_filter(x_[i,:,:,:,j], (1,1,2))
-		return x_
+    for i in range(0,x_.shape[0]):
+        op=np.random.choice(5,1,p=[0.15,0.25,0.2,0.2,0.2]) # 0:nada, 1:sharp, 2:blur, 3: axial blur 3, 4: axial blur 5, 5: axial blur 2
+        for j in range(x_.shape[-1]):
+            if(op==1):
+                x_[i,:,:,:,j] = 2*x_[i,:,:,:,j]-ndimage.uniform_filter(x_[i,:,:,:,j], (3,3,3))
+            if(op==2):
+                x_[i,:,:,:,j] = ndimage.uniform_filter(x_[i,:,:,:,j], (3,3,3))
+            if(op==3):
+                x_[i,:,:,:,j]=ndimage.uniform_filter(x_[i,:,:,:,j], (1,1,3))
+            if(op==4):
+                x_[i,:,:,:,j] =ndimage.uniform_filter(x_[i,:,:,:,j], (1,1,2))
+        return x_
 
 def random_rot(x,y):
     op=np.random.choice(10,1)
@@ -1283,57 +1223,57 @@ def patches_flair(FLAIR,nbNN=[5,5,5],ps=[64,64,64]):
     return pFLAIR
 
 def patch_extract_3D_v2(input,patch_shape,nbNN,offx=1,offy=1,offz=1,crop_bg=0):
-	n=0
-	numPatches=nbNN[0]*nbNN[1]*nbNN[2]
-	local_patch = np.zeros((patch_shape[0],patch_shape[1],patch_shape[2]),input.dtype)
-	patches_3D=np.zeros((numPatches,patch_shape[0],patch_shape[1],patch_shape[2]),input.dtype)
-	for x in range(crop_bg,(nbNN[0]-1)*offx+crop_bg+1,offx):
-		for y in range(crop_bg,(nbNN[1]-1)*offy+crop_bg+1,offy):
-			for z in range(0,(nbNN[2]-1)*offz+1,offz): #spine is touching one side in Z dicrection, so crop has to be asymetric
-				xx = x+patch_shape[0]
-				if xx> input.shape[0]:
-					xx = input.shape[0]
-				yy = y+patch_shape[1]
-				if yy> input.shape[1]:
-					yy = input.shape[1]
-				zz = z+patch_shape[2]
-				if zz> input.shape[2]:
-					zz = input.shape[2]
-				# To deal with defferent patch size due to border issue
-				local_patch = local_patch*0
-				local_patch[0:xx-x,0:yy-y,0:zz-z] = input[x:xx,y:yy,z:zz]
-				a=np.reshape(local_patch,(1,patches_3D.shape[1],patches_3D.shape[2],patches_3D.shape[3]))
-				patches_3D[n,:,:,:]=a
-				n=n+1
-	patches_3D=patches_3D[0:n,:,:,:]
-	return patches_3D
+    n=0
+    numPatches=nbNN[0]*nbNN[1]*nbNN[2]
+    local_patch = np.zeros((patch_shape[0],patch_shape[1],patch_shape[2]),input.dtype)
+    patches_3D=np.zeros((numPatches,patch_shape[0],patch_shape[1],patch_shape[2]),input.dtype)
+    for x in range(crop_bg,(nbNN[0]-1)*offx+crop_bg+1,offx):
+        for y in range(crop_bg,(nbNN[1]-1)*offy+crop_bg+1,offy):
+            for z in range(0,(nbNN[2]-1)*offz+1,offz): #spine is touching one side in Z dicrection, so crop has to be asymetric
+                xx = x+patch_shape[0]
+                if xx> input.shape[0]:
+                    xx = input.shape[0]
+                yy = y+patch_shape[1]
+                if yy> input.shape[1]:
+                    yy = input.shape[1]
+                zz = z+patch_shape[2]
+                if zz> input.shape[2]:
+                    zz = input.shape[2]
+                # To deal with defferent patch size due to border issue
+                local_patch = local_patch*0
+                local_patch[0:xx-x,0:yy-y,0:zz-z] = input[x:xx,y:yy,z:zz]
+                a=np.reshape(local_patch,(1,patches_3D.shape[1],patches_3D.shape[2],patches_3D.shape[3]))
+                patches_3D[n,:,:,:]=a
+                n=n+1
+    patches_3D=patches_3D[0:n,:,:,:]
+    return patches_3D
 
 def patch_reconstruct_3D_v2(out_shape,patches,nbNN, offx=1,offy=1,offz=1,crop_bg=0):
-	n=0
-	output=np.zeros(out_shape,patches.dtype)
-	acu=np.zeros(out_shape,patches.dtype)
-	pesos=np.ones((patches.shape[1],patches.shape[2],patches.shape[3]))
-	for x in range(crop_background_border,(nbNN-1)*offx+crop_background_border+1,offx):
-		for y in range(crop_background_border,(nbNN-1)*offy+crop_background_border+1,offy):
-			for z in range(crop_background_border,(nbNN-1)*offz+crop_background_border+1,offz):
+    n=0
+    output=np.zeros(out_shape,patches.dtype)
+    acu=np.zeros(out_shape,patches.dtype)
+    pesos=np.ones((patches.shape[1],patches.shape[2],patches.shape[3]))
+    for x in range(crop_background_border,(nbNN-1)*offx+crop_background_border+1,offx):
+        for y in range(crop_background_border,(nbNN-1)*offy+crop_background_border+1,offy):
+            for z in range(crop_background_border,(nbNN-1)*offz+crop_background_border+1,offz):
 
-				xx = x+patches.shape[1]
-				if xx> input.shape[0]:
-					xx = input.shape[0]
-				yy = y+patches.shape[2]
-				if yy> input.shape[1]:
-					yy = input.shape[1]
-				zz = z+patches.shape[3]
-				if zz> input.shape[2]:
-					zz = input.shape[2]
+                xx = x+patches.shape[1]
+                if xx> input.shape[0]:
+                    xx = input.shape[0]
+                yy = y+patches.shape[2]
+                if yy> input.shape[1]:
+                    yy = input.shape[1]
+                zz = z+patches.shape[3]
+                if zz> input.shape[2]:
+                    zz = input.shape[2]
 
-				output[x:xx,y:yy,z:zz]=output[x:xx,y:yy,z:zz]+np.reshape(patches[n,:,:,:],(patches.shape[1],patches.shape[2],patches.shape[3]))
-				acu[x:xx,y:yy,z:zz]=acu[x:xx,y:yy,z:zz]+pesos
-				n=n+1
-	ind=np.where(acu==0)
-	acu[ind]=1
-	output=output/acu
-	return output
+                output[x:xx,y:yy,z:zz]=output[x:xx,y:yy,z:zz]+np.reshape(patches[n,:,:,:],(patches.shape[1],patches.shape[2],patches.shape[3]))
+                acu[x:xx,y:yy,z:zz]=acu[x:xx,y:yy,z:zz]+pesos
+                n=n+1
+    ind=np.where(acu==0)
+    acu[ind]=1
+    output=output/acu
+    return output
 
 def random_patches(T1,FLAIR,nbNN=[5,5,5],number=10):
     x_in= patches(T1,FLAIR,nbNN=[5,5,5])
@@ -1645,3 +1585,522 @@ def seg_majvote_flair_ssl(FLAIR,model,nbNN=[5,5,5],ps=[64,64,64],regularized=Fal
 
 
     return SEG_mask
+
+
+################ for FLARE
+from torch.utils.data import Dataset, DataLoader
+from tqdm import tqdm
+import torchio as tio
+
+
+def one_hot_encode(seg, n_classes=5):
+    seg= np.expand_dims(seg, -1)
+    out= np.zeros((seg.shape[0], seg.shape[1], seg.shape[2], n_classes) )
+    out[...,0]=1
+    for i in range(1, n_classes):
+        zone= np.where(seg==i)
+        out[...,i:i+1][zone]=1
+        out[...,0:1][zone]=0
+    return out
+
+def seg_region(flair, overlap=32):
+
+    ax0= flair.sum(axis=(1,2))
+    ax0=np.where(ax0>0)
+    #ax0min=ax0[0][0]
+    #ax0max=ax0[0][-1]
+    ax0min=min(ax0[0])
+    ax0max=max(ax0[0])
+    ax1= flair.sum(axis=(0,2))
+    ax1=np.where(ax1>0)
+    #ax1min=ax1[0][0]
+    #ax1max=ax1[0][-1]
+    ax1min=min(ax1[0])
+    ax1max=max(ax1[0])
+    ax2= flair.sum(axis=(0,1))
+    ax2=np.where(ax2>0)
+    #ax2min=ax2[0][0]
+    #ax2max=ax2[0][-1]
+    ax2min=min(ax2[0])
+    ax2max=max(ax2[0])
+
+    if(overlap>0):
+        ax0min=max([ax0min-overlap,0])
+        ax0max=min([ax0max+overlap, flair.shape[0] ])
+        ax1min=max([ax1min-overlap,0])
+        ax1max=min([ax1max+overlap, flair.shape[1] ])
+        ax2min=max([ax2min-overlap,0])
+        ax2max=min([ax2max+overlap, flair.shape[2] ])
+
+    return ax0min,ax0max,ax1min,ax1max,ax2min,ax2max
+
+def save_slices(IM, seg, datafolder, axes=[0,1,2], step=1):
+    numb_data= len(sorted(glob.glob(os.path.join(datafolder,"x*.npy"))))
+    transpose = [(0, 1, 2, 3 ), (1, 0, 2, 3), (2, 0, 1, 3)]
+    print(IM.shape)
+    count=0
+    for axis_to_take in axes:
+        SEG=np.transpose(np.copy(seg), transpose[axis_to_take])
+        IM=np.transpose(np.copy(IM), transpose[axis_to_take])
+        indices= np.arange(SEG.shape[0])
+        np.random.shuffle(indices)
+        for sl_num in indices[::step]:
+            if(SEG[sl_num].sum()>5):
+                x=IM[sl_num:sl_num+1]
+                y= SEG[sl_num:sl_num+1]
+                np.save(os.path.join(datafolder,'x_'+str(numb_data+count)+'.npy'),x)
+                np.save(os.path.join(datafolder,'y_'+str(numb_data+count)+'.npy'),y)
+                count=count+1
+
+
+class da_v3_abstract(object):
+	def __init__(self):
+
+		gaussian_blur= tio.RandomBlur(std= (0.25, 1))
+		edge_enhancement= tio.Lambda(lambda x: x+ np.random.uniform(1,5)*(x- gaussian_blur(x) ))
+		rot_flip= tio.Lambda(lambda x: torch.from_numpy( rot_90(x.numpy().transpose(1,2,3,0) ).transpose(3,0,1,2).copy()   )  )
+		distortion= tio.Lambda(lambda x: torch.from_numpy( ndimage.uniform_filter(x.numpy(), (1,1,int(np.random.uniform(1,6)),1)).copy()))
+		
+		self.spatial_transform = tio.Compose([
+					tio.OneOf({                                # either
+						tio.RandomAffine(scales=(1,1.3),degrees=5, default_pad_value='otsu' ): 0.4,               # random affine
+						tio.RandomElasticDeformation(max_displacement=4): 0.6,   # or random elastic deformation
+					}, p=1),                                 # applied to 80% of images
+
+					])
+		#self.spatial_transform =tio.RandomElasticDeformation(max_displacement=4, p=0.8)
+
+		
+		#"""
+		self.other_transforms = tio.Compose([
+
+					tio.RandomBiasField(p=0.5),                # magnetic field inhomogeneity 30% of times
+					
+					tio.OneOf({ 
+						tio.RandomAnisotropy(downsampling = (1.5, 4)):1,              # make images look anisotropic 25% of times
+						distortion:1,
+						tio.RandomBlur(std= (0.25, 1, 0.25, 1, 0.25, 1)):1 ,                    # blur 25% of times
+						edge_enhancement:1,
+					}, p=0.5 ),
+					
+					tio.OneOf({                                # either
+						tio.RandomMotion(degrees=5 , translation= 4): 1,                 # random motion artifact
+						tio.RandomSpike(intensity=(0.1,0.15) ): 1,                  # or spikes
+						tio.RandomGhosting(num_ghosts=(4,10), intensity=(0.25,0.75)): 1,               # or ghosts
+					}, p=0.5),                                 # applied to 50% of images			
+					tio.RandomNoise( std=(0, 0.1), p=0.5),                   # Gaussian noise 25% of times
+					
+					])
+
+def rot_90(a):
+	op=np.random.choice(10,1)
+	#print(op)
+	if(op==1):
+		a=np.rot90(a,k=2,axes=(1,0))
+	elif(op==9):
+		a=np.rot90(a,k=1,axes=(1,0))
+	elif(op==2):
+		a=np.rot90(a,k=3,axes=(1,0))
+	elif(op==3):
+		a=np.rot90(a,k=2,axes=(2,0))
+	elif(op==4):
+		a=np.rot90(a,k=1,axes=(2,0))
+	elif(op==5):
+		a=np.rot90(a,k=3,axes=(2,0))
+	elif(op==6):
+		a=np.rot90(a,k=2,axes=(1,2))
+	elif(op==7):
+		a=np.rot90(a,k=1,axes=(1,2))
+	elif(op==8):
+		a=np.rot90(a,k=3,axes=(1,2))
+
+	op=np.random.choice(4,1)
+	if(op==1):
+		a=a[-1::-1,:,:]
+	elif(op==2):
+		a=a[:,:,-1::-1]
+	elif(op==3):
+		a=a[:,-1::-1,:]
+	return a
+
+
+class da_v3_single(da_v3_abstract):
+	def __init__(self):
+		super().__init__()
+
+	def call(self,inputs, label):
+		inputs, label = inputs.transpose((3,0,1,2)), label.transpose((3,0,1,2))
+		X=np.concatenate((inputs,label), axis=0)
+		X= self.spatial_transform(X)
+		inputs, label= X[0:1,:,:,:], X[1:6,:,:,:]
+		inputs= self.other_transforms(inputs)
+		return inputs.transpose((1,2,3,0)), label.transpose((1,2,3,0))
+
+def update_labeled_folder2D(listaIM,listaSEG, datafolder='data/',augment_times=0):
+    if(augment_times>0):
+        data_transform= da_v3_single() 
+
+    for i in range(len(listaIM)):
+        print(listaIM[i])
+        print(listaSEG[i])
+        IM= nii.load(listaIM[i]).get_data()
+        IM= IM/normalize_image(IM, 't1')
+        seg=load_seg(listaSEG[i])
+        seg= one_hot_encode(seg)
+        IM= np.expand_dims(IM, -1)
+        if(augment_times>0):
+            for i in range(augment_times):
+                IM_, seg_= data_transform.call(IM, seg)
+                save_slices(IM_,seg_,datafolder, axes=[2], step=3)
+        else:
+            save_slices(IM,seg,datafolder, axes=[2]) 
+    return True
+
+def IQDA2D(x_):
+    for i in range(0,x_.shape[0]):
+        op=np.random.choice(3,1) # 0:nada, 1:sharp, 2:blur, 3: axial blur 3, 4: axial blur 5, 5: axial blur 2
+        for j in range(x_.shape[-1]):
+            if(op==1):
+                x_[i,:,:,j] = 2*x_[i,:,:,j]-ndimage.uniform_filter(x_[i,:,:,j], (3,3))
+            if(op==2):
+                x_[i,:,:,j] = ndimage.uniform_filter(x_[i,:,:,j], (3,3))
+
+        return x_
+
+def IQDA2D_v2(x_, op=None):
+    if(op==None):
+        op=np.random.choice(3,1 ,p=[0.1,0.45,0.45]) # 0:nada, 1:sharp, 2:blur, 3: axial blur 3, 4: axial blur 5, 5: axial blur 2
+    std=[np.random.uniform(0.25,0.6),np.random.uniform(0.25,0.6)]
+    alpha= np.random.uniform(1,3)
+
+    for j in range(x_.shape[-1]):
+        if(op==1):
+            x_[...,j] =  x_[...,j]+ alpha*(x_[...,j]-ndimage.gaussian_filter(x_[...,j], std))
+        if(op==2):
+            x_[...,j] = ndimage.gaussian_filter(x_[...,j], std)
+    return x_
+
+def batch_rot90_2D(lesion_batch):
+    for i in range(lesion_batch.shape[0]):
+        a=lesion_batch[i]
+        op=np.random.choice(4,1)
+        if(op==1):
+            a=np.rot90(a,k=2,axes=(1,0))
+        elif(op==3):
+            a=np.rot90(a,k=1,axes=(1,0))
+        elif(op==2):
+            a=np.rot90(a,k=3,axes=(1,0))
+
+        op=np.random.choice(3,1)
+        if(op==1):
+            a=a[-1::-1,:]
+        elif(op==2):
+            a=a[:,-1::-1]
+        lesion_batch[i]=a
+    return lesion_batch
+
+
+class TileDataset2D(Dataset):
+    """Face Landmarks dataset."""
+    def __init__(self,files_dir,transform=None, da=False, img_size=[128,128]):
+        self.x_list= sorted(glob.glob(files_dir+"x*.npy"))
+        self.random_idx= np.arange(len(self.x_list))
+        np.random.shuffle(self.random_idx)
+        self.da=da
+        self.img_size=img_size
+
+    def __len__(self):
+        return len(self.x_list)
+
+    def Mixup(self,x1,x2,y1,y2,alfa=0.3):
+        a=np.random.beta(alfa,alfa)
+        x=a*x1+(1-a)*x2
+        y=a*y1+(1-a)*y2
+        return x,y
+
+    def iqda(self, x, y):
+        x=IQDA2D(x)
+        #return self.rot(x,y)
+        return x,y
+
+    def iqda_v2(self, x, y):
+        x[0,:,:,:]=IQDA2D_v2(x[0,:,:,:])
+        #return self.rot(x,y)
+        return x,y
+
+    def rot(self, x, y):
+        X=np.concatenate((x,y), axis=-1)
+        X=batch_rot90_2D(X)
+        x=X[:,:,:,0:x.shape[-1]]
+        y=X[:,:,:,x.shape[-1]:x.shape[-1]+y.shape[-1]]
+        return x,y
+    
+    def rot4(self, x, y, z, h):
+        X=np.concatenate((x,y,z,h), axis=-1)
+        X=batch_rot90_2D(X)
+        x=X[:,:,:,0:x.shape[-1]]
+        y=X[:,:,:,x.shape[-1]:x.shape[-1]+y.shape[-1]]
+        z=X[:,:,:,x.shape[-1]+y.shape[-1]:x.shape[-1]+y.shape[-1]+z.shape[-1]]
+        h=X[:,:,:,x.shape[-1]+y.shape[-1]+z.shape[-1]:]
+        return x,y,z,h
+
+    def get_random_patch(self, x1,y1, size=[128,128]):
+        x_ran= np.random.randint( size[0]//2, x1.shape[1]- (size[0]-size[0]//2) +1 )
+        y_ran= np.random.randint( size[0]//2, x1.shape[2]- (size[1]-size[1]//2) +1 )
+        xo=x_ran- size[0]//2
+        yo=y_ran- size[1]//2
+        return x1[:,xo: xo+size[0], yo: yo+size[1],:],y1[:,xo: xo+size[0], yo: yo+size[1],:]
+
+    def get_random_patch_v2(self, x1, y1, size=[128,128]):
+        map_lab=np.where(np.sum(y1[0,:,:,:],2)>0)
+        
+        choice=np.random.randint(0,len(map_lab[0]))
+        x_ran= map_lab[0][choice]
+        y_ran= map_lab[1][choice]
+
+        xo=max([0,x_ran- (size[0]//2)])
+        yo=max([0,y_ran- (size[1]//2)])
+        xt=xo+size[0]
+        yt=yo+size[1]
+
+        if(xt>x1.shape[1]):
+            xt=x1.shape[1]
+            xo=xt-size[0]
+        if(yt>x1.shape[2]):
+            yt=x1.shape[2]
+            yo=yt-size[1]
+
+        return x1[:,xo: xt, yo: yt,:],y1[:,xo: xt, yo: yt,:]
+
+    def normalize_input_std(self,input_ ):
+        m1=np.mean(input_)
+        s1=np.std(input_)+0.00001
+        input_=(input_-m1)/s1
+        return input_
+    
+    def normalize_input_minmax(self,input_ ):
+        mi=np.min(input_)
+        ma=np.max(input_)
+        #print(mi, ma)
+        input_=(input_-mi)/(ma-mi)
+        return input_
+
+    def get_pair(self, idx):
+        x1_name=self.x_list[idx]
+        y1_name=x1_name.replace('x_','y_')
+        x1=np.load(x1_name).astype('float')
+        y1=np.load(y1_name).astype('float')
+        
+        #x1[...,0]= normalize_image(x1[...,0], 't1')
+        
+        x1= self.normalize_input_minmax(x1 )
+
+        #end
+        
+        if(not x1.shape==self.img_size):
+            x1,y1=self.get_random_patch_v2(x1,y1, size=self.img_size)
+        return x1,y1
+
+    def __getitem__(self, idx):
+        #print(idx)
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        
+        x1,y1= self.get_pair(idx)
+
+        if(self.da=="rot"):
+            inputs,label= self.rot( x1, y1)
+
+        if(self.da=="iqda"):
+            inputs,label= self.iqda( x1, y1)
+
+        if(self.da=="iqda_v2"):
+            inputs,label= self.iqda_v2( x1, y1)
+
+        elif(self.da=="mixup"):
+            ind_ran=self.random_idx[idx]
+            x2,y2= self.get_pair(ind_ran)
+            x2=np.load(x2_name)
+            y2=np.load(y2_name)
+            inputs,label=self.Mixup(x1,x2,y1,y2)
+
+        else:
+            inputs=x1
+            label=y1
+        """
+        print(label.max())
+        save_img(label[0,:,:,0], 'y.png')
+        save_img(inputs[0,:,:,0], 'x1.png')
+        save_img(inputs[0,:,:,1], 'x2.png')
+        end
+        #"""
+        inputs= torch.from_numpy(  inputs[0].transpose((2,0,1))  ).float()
+        label=torch.from_numpy(  label[0].transpose((2,0,1))  ).float()
+        sample = {'inputs': inputs, 'label': label}
+        return sample
+
+
+class TileDataset_with_reg_2D(TileDataset2D):
+    """Face Landmarks dataset."""
+    def __init__(self,files_dir, transform=None, da=False, img_size=[128,128]):
+        super().__init__(files_dir, transform, da, img_size)
+        
+        self.x_list= sorted(glob.glob(files_dir+"x*.npy"))    
+        self.transform = transform
+        self.random_idx= np.arange(len(self.x_list))
+        np.random.shuffle(self.random_idx)
+        self.da=da
+
+    def Mixup_it(self,x1,x2,y1,y2, x1_,x2_,y1_,y2_, sim,sim_, alfa=0.3 ):
+        a=np.random.beta(alfa,alfa)
+        x1=a*x1+(1-a)*x1_
+        y1=a*y1+(1-a)*y1_
+        x2=a*x2+(1-a)*x2_
+        y2=a*y2+(1-a)*y2_
+        sim= a*sim+(1-a)*sim_
+        return x1,x2,y1,y2,sim
+        
+    def gen_iqda_2it(self,idx,same_ratio=0.8,sim='output_diff'):
+        op=np.random.choice(2,1,p=[same_ratio,1-same_ratio]) # 0 same 1 different
+        x1, y1= self.get_pair(idx)
+        if(op==0):        
+            inter_sim=0.0
+            y2, x2 = np.copy(y1), np.copy(x1) 
+        else:
+            x1, y1= self.get_pair(idx)
+            ind_ran=self.random_idx[idx]
+            x2,y2= self.get_pair(ind_ran)
+            inter_sim= np.exp(-np.mean(np.square(y1-y2)))    
+        return x1, x2, y1, y2 ,inter_sim
+
+    def __getitem__(self, idx):
+        #print(idx)
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+
+        x1, x2, y1, y2 ,inter_sim= self.gen_iqda_2it(idx)
+        
+
+        if(self.da=="rot"):
+            x1, y1, x2, y2= self.rot4( x1, y1, x2, y2)
+
+        elif(self.da=="iqda"):
+            x1, y1= self.iqda( x1, y1)
+            x2, y2= self.iqda( x2, y2)
+            
+            x1, y1, x2, y2= self.rot4( x1, y1, x2, y2)
+
+
+        elif(self.da=="iqda_v2"):
+            x1, y1= self.iqda_v2( x1, y1)
+            x2, y2= self.iqda_v2( x2, y2)
+            x1, y1, x2, y2= self.rot4( x1, y1, x2, y2)
+        
+        elif(self.da=="mixup"):
+            ind_ran=self.random_idx[idx]
+            x1_, x2_, y1_, y2_ ,inter_sim_= self.gen_iqda_2it(ind_ran)
+            x1,x2,y1,y2,inter_sim =self.Mixup_it(x1,x2,y1,y2, x1_,x2_,y1_,y2_, inter_sim,inter_sim_)
+
+        
+        sample1 = {'inputs': x1, 'label': y1}
+        sample2 = {'inputs': x2, 'label': y2}
+
+        
+        inter_sim= torch.tensor(inter_sim).float().to(device)
+        #return sample1, sample2, inter_sim
+        inputs1, inputs2 = torch.from_numpy(  x1[0].transpose((2,0,1))  ).float(), torch.from_numpy(  x2[0].transpose((2,0,1))  ).float() 
+        label1, label2=torch.from_numpy(  y1[0].transpose((2,0,1))  ).float(), torch.from_numpy(  y2[0].transpose((2,0,1))  ).float()
+        return {'inputs1': inputs1, 'label1': label1,
+                'inputs2': inputs2, 'label2': label2,
+                'inter_sim': inter_sim}
+
+
+def train_model_2D(model,optimizer,criterion,val_criterion, Epoch,dataset_loader,
+                dataset_loader_val,eval_strategy,out_PATH,best_val_loss=100,early_stop=False,regularized=True,  loss_weights=[1,0.01],
+                early_stop_treshold=100):
+    count=0
+    for epoch in range(Epoch):
+        running_loss = 0.0
+        model.train()
+        k=0
+        with tqdm(dataset_loader) as tepoch:
+            for sample in tepoch:
+                k=k+1
+                optimizer.zero_grad()
+                if(regularized):
+                    
+                    inputs1, labels1 =sample['inputs1'].to(device) , sample['label1'].to(device)
+                    inputs2, labels2 =sample['inputs2'].to(device) , sample['label2'].to(device)
+
+                    
+                    bottleneck1 = model.encoder(inputs1)
+                    pred1=model.segmentation_head(model.decoder(*bottleneck1))
+                    bottleneck2 = model.encoder(inputs2)
+                    pred2=model.segmentation_head(model.decoder(*bottleneck2))
+
+                    #print(bottleneck1[-1].size())
+
+                    latent_distance= 2*torch.sum(torch.square(bottleneck1[-1]-bottleneck2[-1]), dim=(1,2,3))/(torch.mean(torch.square(bottleneck1[-1]), dim=(1,2,3))+torch.mean(torch.square(bottleneck2[-1]), dim=(1,2,3)))
+                    consistency=  torch.mean(latent_distance* torch.exp(-sample['inter_sim']))
+                    loss_supervised= (criterion(pred1, labels1)+criterion(pred2, labels2))/2
+                    loss = loss_supervised *loss_weights[0]+ consistency*loss_weights[1]
+                    tepoch.set_postfix(supervised_loss=loss_supervised.item(), regularization=consistency.item())
+
+                else:
+                    inputs, labels =sample['inputs'].to(device) , sample['label'].to(device)
+                    outputs= model(inputs)
+                    loss = criterion(outputs, labels)
+                    tepoch.set_postfix(loss=loss.item(), Dice=100. * (1-loss.item()))
+
+                loss.backward()
+                optimizer.step()
+                running_loss += loss.item()
+                #break
+
+            running_loss_val =0.0
+            model.eval()
+            j=0
+
+        for sample in tqdm(dataset_loader_val):
+            j=j+1
+            inputs, labels =sample['inputs'].to(device) , sample['label'].to(device)
+            with torch.no_grad():
+                outputs = model(inputs)
+            loss = val_criterion(outputs, labels)
+            running_loss_val += loss.item()
+        #res
+        val_loss = running_loss_val/(j+1)
+        
+        train_loss= running_loss/(k+1)
+        print('Epoch: '+str(epoch)+'   Loss: '+str(train_loss)+'   Val_loss: '+str(val_loss))
+
+        if(val_loss<best_val_loss):
+            #savingmodel
+            count=0
+            torch.save(model, out_PATH)
+            best_val_loss=val_loss
+            print('saving weights. new best loss: '+str(best_val_loss))
+        else:
+            count=count+1
+            if(early_stop):
+                if(count>early_stop_treshold):
+                    print('val loss did not improve for:'+str(early_stop_treshold)+' epochs. Stopping training.')
+                    break
+    return best_val_loss
+
+def mdice_loss_pytorch2D(y_pred, y_true):
+    acu=0
+    n_class=y_true.size(1)
+    epsilon=1
+    #epsilon=0.01
+    for i in range(0,n_class):
+        b=y_true[:,i,:,:]
+        a=y_pred[:,i,:,:]
+        y_int = a[:]*b[:]
+        vol_pred = a[:].sum()
+        vol_gt = b[:].sum()
+        vol_int = y_int.sum()
+        #print(vol_int)
+        acu=acu+ (2*vol_int) / (vol_gt +vol_pred + epsilon)
+    acu=acu/n_class
+    return 1-acu

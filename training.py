@@ -7,6 +7,8 @@ import losses
 import torch
 from helper import *
 import torch.optim as optim
+import segmentation_models_pytorch as smp
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def worker_init_fn(worker_id):
@@ -227,8 +229,6 @@ def POPCORN( ps=[64,64,64], nbNN=[5,5,5], dataset_path="/lib/", Epoch_per_step=2
     torch.save(model, out_filepath("snapshot"))
 
     
-
-
 def train_on_labeled_only(regularized=True,save=True,Epoch=100, datafolder='dataset/train/',datafolder_val='dataset/val/', loss_weights=[1,0.01],batch_size=1 ,early_stop_treshold=30, da_type="iqda_v2",modality='T1_FLAIR', nbNN=[5,5,5],ps=[64,64,64],Snapshot=True):
     
 
@@ -334,6 +334,97 @@ def train_on_labeled_only(regularized=True,save=True,Epoch=100, datafolder='data
                 moving_average_model = copy.deepcopy(model)
 
 
-                    
+def train_on_labeled_only2D(regularized=True,save=True,Epoch=100, datafolder='dataset/train/',datafolder_val='dataset/val/', loss_weights=[1,0.01],batch_size=1 ,early_stop_treshold=30, da_type="iqda_v2",modality='T1_FLAIR', img_size=[128,128],Snapshot=True):
+    
+    k= 0
+    if(save):
+        
+        try:
+            if(os.path.exists(datafolder)):
+                shutil.rmtree(datafolder)
+            os.mkdir(datafolder)
+        except OSError:
+            print ("Creation of the directory %s failed" % datafolder)
+        else:
+            print ("Successfully created the directory %s " % datafolder)
+
+        try:
+            if(os.path.exists(datafolder_val)):
+                shutil.rmtree(datafolder_val)
+            os.mkdir(datafolder_val)
+        except OSError:
+            print ("Creation of the directory %s failed" % datafolder_val)
+        else:
+            print ("Successfully created the directory %s " % datafolder_val)
+
+        lib_path = os.path.join("..","dataset/Subtask2")
+        
+        listaT1=keyword_toList(path=lib_path,keyword="labelled_images/*.gz")
+        listaSEG=keyword_toList(path=lib_path,keyword="labels/*.gz")
+        listaT1= np.array(listaT1)
+        listaSEG= np.array(listaSEG)
+        val_ratio=0.8
+
+        threshold=int(len(listaT1)*val_ratio)
+        ind=np.arange(len(listaT1))
+        np.random.seed(k)
+        np.random.shuffle(ind)
+        ind_train=ind[:threshold].tolist()
+        ind_val=ind[threshold:].tolist()
+
+        update_labeled_folder2D(listaIM=listaT1[ind_train],listaSEG=listaSEG[ind_train], datafolder=datafolder, augment_times=6)
+        update_labeled_folder2D(listaIM=listaT1[ind_train],listaSEG=listaSEG[ind_train], datafolder=datafolder)
+        update_labeled_folder2D(listaIM=listaT1[ind_val],listaSEG=listaSEG[ind_val], datafolder=datafolder_val)
+
+    t0=time.time()
 
 
+    # load model (UNET3D)
+    drop=0.5
+    nf = 24
+    in_dim=1
+    n_classes=5
+
+    model= smp.Unet( encoder_name="resnet18", activation='softmax', encoder_weights=None,  in_channels=in_dim, classes=n_classes)#, aux_params= {"classes" : n_classes, "pooling" : "max", #"avg". Default is "avg"  
+    #"dropout" :drop,  "activation": 'softmax'} )
+        #pooling = "max",dropout =drop)
+    model.to(device)
+    optimizer = optim.Adam(model.parameters(), lr=0.0001)
+    criterion= lambda x,y : mdice_loss_pytorch2D(x,y)
+    
+    
+    if(regularized):
+        filepath='weights/SUPERVISED_2D_'+modality+'_regularized'+da_type+'.pt'
+    else:
+        filepath='weights/SUPERVISED_2D_'+modality+'_noreg'+da_type+'.h5'
+
+
+    if(regularized):
+        dataset_train = TileDataset_with_reg_2D(datafolder,transform=None,da=da_type, img_size= img_size)
+    else:
+        dataset_train = TileDataset2D(datafolder,transform=None,da=da_type, img_size= img_size)
+    dataset_val = TileDataset2D(datafolder_val,transform=None,da=False, img_size=img_size)
+    dataset_loader = DataLoader(dataset_train, batch_size=batch_size, shuffle=True, worker_init_fn=worker_init_fn)
+    dataset_loader_val = DataLoader(dataset_val, batch_size=batch_size, shuffle=False)
+
+    best_val_loss= train_model_2D(model=model,optimizer=optimizer,criterion=criterion,Epoch=Epoch,regularized=True,  loss_weights=loss_weights,
+            dataset_loader=dataset_loader,dataset_loader_val=dataset_loader_val,val_criterion=criterion,eval_strategy='classic',
+            out_PATH=filepath,early_stop=True,early_stop_treshold=early_stop_treshold)
+
+
+    if (Snapshot):
+        model= torch.load(filepath) # To get the best one
+        for j in range(0,early_stop_treshold):
+            print("Run=",j)
+            best_val_loss= train_model_2D(model=model,optimizer=optimizer,criterion=criterion,Epoch=1,regularized=True,  loss_weights=loss_weights,
+                        dataset_loader=dataset_loader,dataset_loader_val=dataset_loader_val,val_criterion=criterion,eval_strategy='classic',
+                        out_PATH=filepath, best_val_loss=best_val_loss)
+
+            #model ensemble regularization (snapshot)
+            if(j==0):
+                moving_average_model = copy.deepcopy(model)
+            else:
+                #changing_ratio=1/(j+1)
+                changing_ratio= 0.1
+                moving_average_weights(running_model=model,stable_model=moving_average_model,changing_ratio=changing_ratio )
+                moving_average_model = copy.deepcopy(model)
